@@ -17,5 +17,10 @@ let package = Package(
             dependencies: [],
             path: "Sources/NarraV2"
         ),
+        .testTarget(
+            name: "NarraV2Tests",
+            dependencies: ["NarraV2"],
+            path: "Tests/NarraV2Tests"
+        ),
     ]
 )
