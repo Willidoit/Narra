@@ -6,15 +6,17 @@ let package = Package(
     name: "NarraV2",
     platforms: [.macOS(.v14)],
     dependencies: [
-        // STT: whisper.cpp Swift bindings (local fallback)
-        // .package(url: "...", from: "..."),
+        // STT: WhisperKit (local on-device transcription via Apple Neural Engine)
+        .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.9.0"),
         // LLM: MLX Swift (local fallback)
         // .package(url: "...", from: "..."),
     ],
     targets: [
         .executableTarget(
             name: "NarraV2",
-            dependencies: [],
+            dependencies: [
+                .product(name: "WhisperKit", package: "WhisperKit"),
+            ],
             path: "Sources/NarraV2"
         ),
         .testTarget(

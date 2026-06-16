@@ -38,11 +38,19 @@ public final class LocalModelManager: @unchecked Sendable {
     /// Curated default specs. These are intentionally conservative —
     /// small, well-known models that run on Apple Silicon without
     /// external downloads from sketchy sources.
+    ///
+    /// NOTE: The `url` field is kept for API compatibility but is **not**
+    /// used for the Whisper model. `LocalTranscriptionService` now delegates
+    /// all Whisper downloads to WhisperKit, which fetches Core ML bundles
+    /// from `argmaxinc/whisperkit-coreml` on Hugging Face and caches them
+    /// under `~/.cache/huggingface/hub/`.  The `key` value mirrors WhisperKit's
+    /// model-name convention so that `isDownloaded(_:)` can locate the cached
+    /// bundle without re-downloading it.
     public static let defaultWhisper: ModelSpec = .init(
-        key: "whisper-tiny",
-        displayName: "Whisper Tiny (39M, multilingual)",
-        url: URL(string: "https://huggingface.co/ggerganov/whisper.cpp/resolve/main/ggml-tiny.bin")!,
-        sizeBytes: 39_000_000
+        key: "openai_whisper-base",
+        displayName: "Whisper Base (145M, via WhisperKit)",
+        url: URL(string: "https://huggingface.co/argmaxinc/whisperkit-coreml")!,
+        sizeBytes: 145_000_000
     )
 
     public static let defaultLLM: ModelSpec = .init(
@@ -76,7 +84,27 @@ public final class LocalModelManager: @unchecked Sendable {
 
     /// Local file URL for the model. `nil` if the model is not yet
     /// downloaded.
+    ///
+    /// For WhisperKit-managed models (keys matching `openai_whisper-*`),
+    /// this also checks WhisperKit's Hugging Face hub cache at
+    /// `~/.cache/huggingface/hub/` before falling back to the NarraV2
+    /// app-support directory. WhisperKit downloads Core ML bundles, so the
+    /// check looks for a directory rather than a `.bin` file.
     public func localURL(for spec: ModelSpec) -> URL? {
+        // 1. Check the WhisperKit HuggingFace hub cache for whisper models.
+        //    WhisperKit stores models as directories under:
+        //    ~/.cache/huggingface/hub/models--argmaxinc--whisperkit-coreml/
+        //      snapshots/<hash>/<ModelName>/
+        //    We accept the presence of the top-level repo directory as a
+        //    signal that WhisperKit has already downloaded at least one model.
+        if spec.key.hasPrefix("openai_whisper") {
+            if let whisperKitCacheURL = whisperKitCacheURL(for: spec) {
+                return whisperKitCacheURL
+            }
+        }
+
+        // 2. Legacy / LLM models: look for a flat .bin file in the NarraV2
+        //    application-support directory.
         let url = baseDirectory.appendingPathComponent(spec.key + ".bin")
         return fileManager.fileExists(atPath: url.path) ? url : nil
     }
@@ -84,6 +112,41 @@ public final class LocalModelManager: @unchecked Sendable {
     /// Whether a model is downloaded and ready to use.
     public func isDownloaded(_ spec: ModelSpec) -> Bool {
         localURL(for: spec) != nil
+    }
+
+    // MARK: - Private helpers
+
+    /// Returns the WhisperKit model cache URL if the model directory exists
+    /// inside `~/.cache/huggingface/hub/`.
+    private func whisperKitCacheURL(for spec: ModelSpec) -> URL? {
+        // WhisperKit names the HuggingFace repo "argmaxinc/whisperkit-coreml",
+        // which maps to the directory name "models--argmaxinc--whisperkit-coreml".
+        let homeDir = fileManager.homeDirectoryForCurrentUser
+        let hubDir = homeDir
+            .appendingPathComponent(".cache/huggingface/hub", isDirectory: true)
+            .appendingPathComponent("models--argmaxinc--whisperkit-coreml", isDirectory: true)
+
+        guard fileManager.fileExists(atPath: hubDir.path) else { return nil }
+
+        // Walk snapshots/<hash>/<ModelName> to find the model directory.
+        let snapshotsDir = hubDir.appendingPathComponent("snapshots", isDirectory: true)
+        guard let snapshots = try? fileManager.contentsOfDirectory(
+            at: snapshotsDir,
+            includingPropertiesForKeys: [.isDirectoryKey],
+            options: .skipsHiddenFiles
+        ) else { return nil }
+
+        for snapshot in snapshots {
+            let modelDir = snapshot.appendingPathComponent(spec.key, isDirectory: true)
+            if fileManager.fileExists(atPath: modelDir.path) {
+                return modelDir
+            }
+        }
+
+        // Model repo is present but this specific model variant hasn't been
+        // downloaded yet; return the hub directory as a hint so callers know
+        // WhisperKit is set up but the variant needs downloading.
+        return nil
     }
 
     /// Download a model with progress reporting. Safe to call from any

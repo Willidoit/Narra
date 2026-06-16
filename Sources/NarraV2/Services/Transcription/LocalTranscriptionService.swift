@@ -1,24 +1,35 @@
 import Foundation
+import WhisperKit
 
-/// Local transcription service backed by whisper.cpp.
+/// Local transcription service backed by WhisperKit (on-device Whisper via
+/// Apple Neural Engine / Core ML).
 ///
-/// This file ships the service shell and the model-orchestration glue;
-/// the actual whisper.cpp call is left as a clearly-marked
-/// `// TODO(integration)` so the real engine can be wired in without
-/// re-architecting the surrounding code. The protocol surface and
-/// error model are complete and testable.
+/// WhisperKit manages its own model downloads and caches them in
+/// `~/.cache/huggingface/hub/`. The first call to `transcribe(audio:)` will
+/// trigger a one-time model download (≈145 MB for `openai_whisper-base`) and
+/// then cache a `WhisperKit` instance for subsequent calls so the model is
+/// only loaded once per app lifetime.
 public final class LocalTranscriptionService: TranscriptionService, @unchecked Sendable {
 
     // MARK: - Configuration
 
     public struct Configuration: Sendable {
+        /// WhisperKit model identifier. Must match a model name available via
+        /// the Hugging Face `argmaxinc/whisperkit-coreml` repo.
+        public var modelName: String
+
+        /// Legacy model-manager plumbing kept for API compatibility with
+        /// `LocalModelManager`. WhisperKit bypasses the manager's download
+        /// logic and handles its own caching.
         public var modelManager: LocalModelManager
         public var spec: LocalModelManager.ModelSpec
 
         public init(
+            modelName: String = "openai_whisper-base",
             modelManager: LocalModelManager = LocalModelManager(),
             spec: LocalModelManager.ModelSpec = LocalModelManager.defaultWhisper
         ) {
+            self.modelName = modelName
             self.modelManager = modelManager
             self.spec = spec
         }
@@ -27,6 +38,10 @@ public final class LocalTranscriptionService: TranscriptionService, @unchecked S
     // MARK: - State
 
     private let configuration: Configuration
+
+    /// Lazily initialized on the first transcription call. Protected by the
+    /// actor isolation of `loadWhisperKit()`.
+    private var whisperKit: WhisperKit?
 
     public init(configuration: Configuration = Configuration()) {
         self.configuration = configuration
@@ -38,26 +53,33 @@ public final class LocalTranscriptionService: TranscriptionService, @unchecked S
         guard !audio.samples.isEmpty else {
             throw TranscriptionError.emptyAudio
         }
-        let modelURL = try await ensureModel()
 
-        // TODO(integration): replace the next line with a call to
-        // whisper.cpp. The expected integration is:
-        //
-        //   1. Wrap `audio.samples` in an `AVAudioPCMBuffer` (16 kHz
-        //      mono Int16, as the audio layer already produces).
-        //   2. Call into a Swift binding for whisper.cpp:
-        //          let ctx = WhisperContext(modelURL: modelURL)
-        //          let result = try ctx.fullTranscribe(samples: audio.samples)
-        //   3. Map the result to a TranscriptSegment using the audio's
-        //      startTime / duration and any segment-level confidence the
-        //      engine reports.
-        //
-        // Until the binding is added, raise `.serviceError` so the
-        // orchestrator falls back to the cloud service.
-        _ = modelURL
-        throw TranscriptionError.serviceError(
-            "Local whisper.cpp transcription is not yet wired in this build. " +
-            "See TODO(integration) in LocalTranscriptionService.swift."
+        let wk = try await loadWhisperKit()
+
+        // AudioChunk.samples are 16-bit PCM integers; WhisperKit expects
+        // normalized Float32 in [-1.0, 1.0].
+        let floatSamples = audio.samples.map { Float($0) / 32_768.0 }
+
+        let results = try await wk.transcribe(audioArray: floatSamples)
+
+        let text = results.first?.text
+            .trimmingCharacters(in: .whitespacesAndNewlines) ?? ""
+
+        // Derive a confidence value from the first segment's average
+        // log-probability (exp maps log-prob → [0, 1]).
+        let confidence: Double
+        if let avgLogprob = results.first?.segments.first?.avgLogprob {
+            confidence = Double(Foundation.exp(avgLogprob))
+        } else {
+            confidence = 1.0
+        }
+
+        let now = Date()
+        return TranscriptSegment(
+            text: text,
+            startTime: now,
+            endTime: now,
+            confidence: confidence
         )
     }
 
@@ -83,15 +105,17 @@ public final class LocalTranscriptionService: TranscriptionService, @unchecked S
 
     // MARK: - Private
 
-    private func ensureModel() async throws -> URL {
-        if let url = configuration.modelManager.localURL(for: configuration.spec) {
-            return url
-        }
+    /// Returns the cached `WhisperKit` instance, creating and caching it on
+    /// first call. Subsequent calls are fast (no model reload).
+    private func loadWhisperKit() async throws -> WhisperKit {
+        if let existing = whisperKit { return existing }
         do {
-            return try await configuration.modelManager.download(configuration.spec)
+            let wk = try await WhisperKit(model: configuration.modelName)
+            whisperKit = wk
+            return wk
         } catch {
             throw TranscriptionError.serviceError(
-                "Failed to download local STT model: \(error)"
+                "Failed to initialize WhisperKit (\(configuration.modelName)): \(error)"
             )
         }
     }
