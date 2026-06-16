@@ -4,7 +4,7 @@ import PackageDescription
 
 let package = Package(
     name: "NarraV2",
-    platforms: [.macOS(.v14)],
+    platforms: [.macOS(.v15)],
     dependencies: [
         // STT: WhisperKit (local on-device transcription via Apple Neural Engine)
         .package(url: "https://github.com/argmaxinc/WhisperKit", from: "0.9.0"),

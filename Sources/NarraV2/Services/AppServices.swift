@@ -10,7 +10,10 @@ final class AppServices {
 
     private init() {
         let engineState = TranscriptionEngineState()
-        let orchestrator = ServiceOrchestrator()
+        // ponytail: mode read once at launch; ServiceOrchestrator.configuration is `let`,
+        // so changing Service Mode in Settings takes effect on next launch.
+        let mode = AppSettings.shared.orchestratorMode
+        let orchestrator = ServiceOrchestrator(configuration: .init(mode: mode))
         orchestrator.localTranscriber.engineState = engineState
         self.engineState = engineState
         self.orchestrator = orchestrator

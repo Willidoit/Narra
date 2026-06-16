@@ -120,10 +120,16 @@ final class ContentViewModel: ObservableObject {
             do {
                 let level = AppSettings.shared.cleanupLevel
                 let segment = try await orchestrator.transcribeWithFallback(chunk)
+                let trimmed = segment.text.trimmingCharacters(in: .whitespacesAndNewlines)
+                if trimmed.isEmpty {
+                    statusText = "Ready"
+                    uiMode = .hidden
+                    return
+                }
                 let processed = try await orchestrator.processWithFallback(segment, level: level)
                 transcriptText = processed.text
                 lastTranscript = processed.text
-                pipelineText = "Whisper (local) · \(processed.usedCloud ? "Grok" : "Local cleanup")"
+                pipelineText = "Whisper (local) · \(processed.usedCloud ? "Groq" : "Local cleanup")"
                 statusText = "Ready"
                 if autoPaste {
                     uiMode = .hidden

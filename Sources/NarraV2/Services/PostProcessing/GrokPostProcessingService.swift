@@ -17,8 +17,8 @@ public final class GrokPostProcessingService: PostProcessingService, @unchecked 
         public var timeout: TimeInterval
 
         public init(
-            baseURL: URL = URL(string: "https://api.x.ai/v1")!,
-            model: String = "grok-2-latest",
+            baseURL: URL = URL(string: "https://api.groq.com/openai/v1")!,
+            model: String = "llama-3.1-8b-instant",
             temperature: Double = 0.1,
             timeout: TimeInterval = 20
         ) {

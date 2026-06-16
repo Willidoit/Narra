@@ -105,10 +105,10 @@ public final class ServiceOrchestrator: @unchecked Sendable {
             do {
                 return try await cloudProcessor.process(segments: segments, level: level)
             } catch {
-                if isLocalAvailable {
-                    return try await localProcessor.process(segments: segments)
-                }
-                throw error
+                // ponytail: local cleanup always degrades to regex, so unconditional
+                // fallback is safe. The previous isLocalAvailable gate keyed on a
+                // HuggingFace cache path WhisperKit doesn't actually populate.
+                return try await localProcessor.process(segments: segments)
             }
         case .local:
             return try await localProcessor.process(segments: segments)

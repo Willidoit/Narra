@@ -1,0 +1,121 @@
+import Foundation
+import AppKit
+
+// MARK: - CleanupLevel
+
+public enum CleanupLevel: String, CaseIterable, Codable, Sendable, Identifiable {
+    case none, light, medium, high
+
+    public var id: String { rawValue }
+
+    var title: String {
+        switch self {
+        case .none:   return "None"
+        case .light:  return "Light"
+        case .medium: return "Medium"
+        case .high:   return "High"
+        }
+    }
+
+    var description: String {
+        switch self {
+        case .none:   return "Pass through the raw transcript unchanged."
+        case .light:  return "Strip filler words and fix grammar only."
+        case .medium: return "Remove fillers, resolve self-corrections, merge restatements."
+        case .high:   return "Condense aggressively, drop redundancy, prioritize brevity."
+        }
+    }
+
+    var example: String {
+        switch self {
+        case .none:   return "\"Um, I was going to, uh, say that the meeting is uh cancelled.\""
+        case .light:  return "\"I was going to say that the meeting is cancelled.\""
+        case .medium: return "\"The meeting is cancelled.\""
+        case .high:   return "\"Meeting cancelled.\""
+        }
+    }
+}
+
+// MARK: - KeyBinding
+
+struct KeyBinding: Codable, Equatable, Sendable {
+    /// Single-character string, or nil for modifier-only (e.g. bare fn).
+    var keyChar: String?
+    /// NSEvent.ModifierFlags raw value; may include .function (1 << 23).
+    var modifierFlags: UInt
+
+    var displayString: String {
+        var parts: [String] = []
+        let flags = NSEvent.ModifierFlags(rawValue: modifierFlags)
+        if flags.contains(.function) { parts.append("fn") }
+        if flags.contains(.control)  { parts.append("⌃") }
+        if flags.contains(.option)   { parts.append("⌥") }
+        if flags.contains(.shift)    { parts.append("⇧") }
+        if flags.contains(.command)  { parts.append("⌘") }
+        if let char = keyChar {
+            parts.append(char == " " ? "Space" : char.uppercased())
+        }
+        return parts.joined(separator: "")
+    }
+}
+
+// MARK: - AppSettings
+
+final class AppSettings: ObservableObject, @unchecked Sendable {
+    static let shared = AppSettings()
+
+    @Published var cleanupLevel: CleanupLevel {
+        didSet { UserDefaults.standard.set(cleanupLevel.rawValue, forKey: "cleanupLevel") }
+    }
+
+    @Published var orchestratorMode: ServiceOrchestrator.Mode {
+        didSet { UserDefaults.standard.set(orchestratorMode.rawValue, forKey: "orchestratorMode") }
+    }
+
+    @Published var pushToTalkBinding: KeyBinding {
+        didSet { save(binding: pushToTalkBinding, forKey: "pushToTalkBinding") }
+    }
+
+    @Published var pushToToggleBinding: KeyBinding {
+        didSet { save(binding: pushToToggleBinding, forKey: "pushToToggleBinding") }
+    }
+
+    private init() {
+        // Defaults: fn for push-to-talk, fn+Space for push-to-toggle.
+        let functionFlag = NSEvent.ModifierFlags.function.rawValue
+
+        if let raw = UserDefaults.standard.string(forKey: "cleanupLevel"),
+           let level = CleanupLevel(rawValue: raw) {
+            cleanupLevel = level
+        } else {
+            cleanupLevel = .medium
+        }
+
+        if let raw = UserDefaults.standard.string(forKey: "orchestratorMode"),
+           let mode = ServiceOrchestrator.Mode(rawValue: raw) {
+            orchestratorMode = mode
+        } else {
+            orchestratorMode = .automatic
+        }
+
+        if let data = UserDefaults.standard.data(forKey: "pushToTalkBinding"),
+           let binding = try? JSONDecoder().decode(KeyBinding.self, from: data) {
+            pushToTalkBinding = binding
+        } else {
+            pushToTalkBinding = KeyBinding(keyChar: nil, modifierFlags: functionFlag)
+        }
+
+        if let data = UserDefaults.standard.data(forKey: "pushToToggleBinding"),
+           let binding = try? JSONDecoder().decode(KeyBinding.self, from: data) {
+            pushToToggleBinding = binding
+        } else {
+            pushToToggleBinding = KeyBinding(keyChar: " ", modifierFlags: functionFlag)
+        }
+    }
+
+    private func save(binding: KeyBinding, forKey key: String) {
+        if let data = try? JSONEncoder().encode(binding) {
+            UserDefaults.standard.set(data, forKey: key)
+        }
+    }
+}

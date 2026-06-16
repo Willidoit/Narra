@@ -111,16 +111,12 @@ public final class LocalPostProcessingService: PostProcessingService, @unchecked
     // MARK: - MLX inference
 
     private func runMLX(on segments: [TranscriptSegment]) async throws -> String {
-        let modelURL = try await ensureModel()
-
-        // TODO(integration): replace with MLX Swift inference.
-        //
-        //   1. Concatenate `segments.map(\.text)` with a single newline.
-        //   2. Build a chat-template prompt using `configuration.systemPrompt`.
-        //   3. Run inference at low temperature (0.1).
-        //   4. Strip the assistant marker and trailing whitespace.
-        //
-        _ = modelURL
+        // ponytail: MLX inference is a TODO and ensureModel triggers an
+        // 800MB Llama download that blocks the pill. Short-circuit until
+        // wired up; caller falls through to regex output.
+        guard configuration.modelManager.isDownloaded(configuration.spec) else {
+            throw PostProcessingError.serviceError("Local LLM not downloaded; skipping MLX.")
+        }
         throw PostProcessingError.serviceError(
             "Local MLX post-processing is not yet wired. See TODO(integration) in LocalPostProcessingService.swift."
         )

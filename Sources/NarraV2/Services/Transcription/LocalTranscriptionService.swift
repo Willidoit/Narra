@@ -45,7 +45,7 @@ public final class LocalTranscriptionService: TranscriptionService, @unchecked S
 
     /// Surfaces load/ready state for the menu bar and home view. Optional so
     /// tests can construct the service without UI plumbing.
-    public weak var engineState: TranscriptionEngineState?
+    weak var engineState: TranscriptionEngineState?
 
     public init(configuration: Configuration = Configuration()) {
         self.configuration = configuration
