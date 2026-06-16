@@ -19,6 +19,7 @@ public enum KeychainService {
             kSecAttrService: service,
             kSecAttrAccount: account,
             kSecValueData: data,
+            kSecAttrAccessible: kSecAttrAccessibleWhenUnlockedThisDeviceOnly,
         ]
         let status = SecItemAdd(addQuery as CFDictionary, nil)
         if status != errSecSuccess {

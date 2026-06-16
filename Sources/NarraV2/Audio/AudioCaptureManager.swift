@@ -1,5 +1,7 @@
 import Foundation
 import AVFoundation
+import CoreAudio
+import AudioToolbox
 import os.lock
 
 /// Captures microphone audio via `AVAudioEngine` and pushes a mono 16 kHz
@@ -54,7 +56,7 @@ public final class AudioCaptureManager: @unchecked Sendable {
 
     // MARK: - Private state
 
-    private let engine = AVAudioEngine()
+    private var engine = AVAudioEngine()
     private let converterLock = NSLock()
     private var converter: AVAudioConverter?
     private let levelQueue = DispatchQueue(label: "com.narrav2.audio.level", qos: .utility)
@@ -98,8 +100,25 @@ public final class AudioCaptureManager: @unchecked Sendable {
         guard granted else {
             throw AudioCaptureError.permissionDenied
         }
+        engine = AVAudioEngine()
 
         let inputNode = engine.inputNode
+        // Apply preferred input device if user picked one in the menu.
+        // ponytail: best-effort CoreAudio property set; silently falls
+        // back to system-default mic if anything fails.
+        if let uid = UserDefaults.standard.string(forKey: "preferredMicUniqueID"),
+           let deviceID = Self.audioDeviceID(forUniqueID: uid),
+           let inputAU = inputNode.audioUnit {
+            var id = deviceID
+            AudioUnitSetProperty(
+                inputAU,
+                kAudioOutputUnitProperty_CurrentDevice,
+                kAudioUnitScope_Global,
+                0,
+                &id,
+                UInt32(MemoryLayout<AudioDeviceID>.size)
+            )
+        }
         let inputFormat = inputNode.inputFormat(forBus: 0)
         guard inputFormat.sampleRate > 0 else {
             throw AudioCaptureError.noInputDevice
@@ -135,10 +154,50 @@ public final class AudioCaptureManager: @unchecked Sendable {
         if isCapturing {
             engine.inputNode.removeTap(onBus: 0)
             engine.stop()
+            engine.reset()
+            converterLock.lock(); converter = nil; converterLock.unlock()
+            // Replace the engine entirely so the input AudioUnit fully
+            // releases the device handle (otherwise the OS continues to
+            // show the mic-in-use indicator and may keep audio ducked).
+            engine = AVAudioEngine()
             isCapturing = false
         }
         let samples = buffer.flush()
         return AudioChunk(samples: samples, sampleRate: targetSampleRate, startTime: nil)
+    }
+
+    // MARK: - CoreAudio helpers
+
+    /// Returns the `AudioDeviceID` whose UID matches `uniqueID`, or nil.
+    public static func audioDeviceID(forUniqueID uniqueID: String) -> AudioDeviceID? {
+        var size: UInt32 = 0
+        var addr = AudioObjectPropertyAddress(
+            mSelector: kAudioHardwarePropertyDevices,
+            mScope: kAudioObjectPropertyScopeGlobal,
+            mElement: kAudioObjectPropertyElementMain
+        )
+        let sys = AudioObjectID(kAudioObjectSystemObject)
+        guard AudioObjectGetPropertyDataSize(sys, &addr, 0, nil, &size) == noErr else {
+            return nil
+        }
+        let count = Int(size) / MemoryLayout<AudioDeviceID>.size
+        var ids = [AudioDeviceID](repeating: 0, count: count)
+        guard AudioObjectGetPropertyData(sys, &addr, 0, nil, &size, &ids) == noErr else {
+            return nil
+        }
+        for id in ids {
+            var uidAddr = AudioObjectPropertyAddress(
+                mSelector: kAudioDevicePropertyDeviceUID,
+                mScope: kAudioObjectPropertyScopeGlobal,
+                mElement: kAudioObjectPropertyElementMain
+            )
+            var uid: Unmanaged<CFString>?
+            var uidSize = UInt32(MemoryLayout<Unmanaged<CFString>?>.size)
+            let status = AudioObjectGetPropertyData(id, &uidAddr, 0, nil, &uidSize, &uid)
+            guard status == noErr, let cf = uid?.takeRetainedValue() else { continue }
+            if (cf as String) == uniqueID { return id }
+        }
+        return nil
     }
 
     /// Discard buffered audio without stopping capture.

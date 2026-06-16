@@ -16,6 +16,7 @@ public struct ProcessedTranscript: Equatable, Sendable, Hashable, Codable {
     public let endTime: Date
     public let sourceSegmentIDs: [UUID]
     public let confidence: Double
+    public let usedCloud: Bool
 
     public init(
         id: UUID = UUID(),
@@ -23,7 +24,8 @@ public struct ProcessedTranscript: Equatable, Sendable, Hashable, Codable {
         startTime: Date,
         endTime: Date,
         sourceSegmentIDs: [UUID] = [],
-        confidence: Double = 1.0
+        confidence: Double = 1.0,
+        usedCloud: Bool = false
     ) {
         self.id = id
         self.text = text
@@ -31,6 +33,7 @@ public struct ProcessedTranscript: Equatable, Sendable, Hashable, Codable {
         self.endTime = endTime
         self.sourceSegmentIDs = sourceSegmentIDs
         self.confidence = confidence
+        self.usedCloud = usedCloud
     }
 
     public var duration: TimeInterval {

@@ -1,6 +1,6 @@
 import Foundation
 
-func runWithTimeout<T>(
+func runWithTimeout<T: Sendable>(
     timeout: Duration,
     operation: @escaping @Sendable () async throws -> T
 ) async -> T? {
@@ -30,7 +30,7 @@ func runWithTimeout<T>(
     }
 }
 
-private enum TimeoutOutcome<T> {
+private enum TimeoutOutcome<T: Sendable>: Sendable {
     case value(T)
     case fallback
 }

@@ -43,8 +43,21 @@ public final class LocalTranscriptionService: TranscriptionService, @unchecked S
     /// actor isolation of `loadWhisperKit()`.
     private var whisperKit: WhisperKit?
 
+    /// Surfaces load/ready state for the menu bar and home view. Optional so
+    /// tests can construct the service without UI plumbing.
+    public weak var engineState: TranscriptionEngineState?
+
     public init(configuration: Configuration = Configuration()) {
         self.configuration = configuration
+    }
+
+    // MARK: - Preload
+
+    /// Loads the WhisperKit model without performing any transcription.
+    /// Safe to call at app launch to avoid the multi-second freeze on the
+    /// first recording.
+    public func preload() async throws {
+        _ = try await loadWhisperKit()
     }
 
     // MARK: - TranscriptionService
@@ -109,11 +122,24 @@ public final class LocalTranscriptionService: TranscriptionService, @unchecked S
     /// first call. Subsequent calls are fast (no model reload).
     private func loadWhisperKit() async throws -> WhisperKit {
         if let existing = whisperKit { return existing }
+        let state = engineState
+        await MainActor.run {
+            state?.isLoading = true
+            state?.lastError = nil
+        }
         do {
             let wk = try await WhisperKit(model: configuration.modelName)
             whisperKit = wk
+            await MainActor.run {
+                state?.isReady = true
+                state?.isLoading = false
+            }
             return wk
         } catch {
+            await MainActor.run {
+                state?.lastError = String(describing: error)
+                state?.isLoading = false
+            }
             throw TranscriptionError.serviceError(
                 "Failed to initialize WhisperKit (\(configuration.modelName)): \(error)"
             )

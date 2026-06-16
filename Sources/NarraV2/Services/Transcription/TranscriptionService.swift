@@ -47,6 +47,19 @@ public enum TranscriptionError: Error, Equatable, Sendable {
     case permissionDenied
 }
 
+// MARK: - LocalizedError
+
+extension TranscriptionError: LocalizedError {
+    public var errorDescription: String? {
+        switch self {
+        case .notImplemented:       return "Transcription is not available."
+        case .emptyAudio:           return "No audio was captured. Try speaking before stopping."
+        case .serviceError(let m):  return "Transcription failed: \(m)"
+        case .permissionDenied:     return "Microphone access denied. Enable it in System Settings → Privacy & Security."
+        }
+    }
+}
+
 // MARK: - Protocol
 
 /// Abstracts audio chunking and speech-to-text calls.

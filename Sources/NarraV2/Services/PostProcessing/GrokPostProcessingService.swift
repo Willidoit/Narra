@@ -32,11 +32,10 @@ public final class GrokPostProcessingService: PostProcessingService, @unchecked 
     // MARK: - Dependencies
 
     private let configuration: Configuration
-    private let apiKey: String
+    private let injectedKey: String?
     private let session: URLSession
     private let requestBuilder: GrokChatCompletionsRequestBuilder
     private let responseParser: GrokChatCompletionsResponseParser
-    private let prompt: PostProcessingPrompt
     private let localFilter: LocalCorrectionFilter
 
     // MARK: - Init
@@ -48,12 +47,11 @@ public final class GrokPostProcessingService: PostProcessingService, @unchecked 
         session: URLSession = .shared
     ) {
         self.configuration = configuration
-        self.apiKey = apiKey ?? GrokAPIKeySource.resolve() ?? ""
+        self.injectedKey = apiKey
         self.localFilter = localFilter
         self.session = session
         self.requestBuilder = GrokChatCompletionsRequestBuilder(configuration: configuration)
         self.responseParser = GrokChatCompletionsResponseParser()
-        self.prompt = PostProcessingPrompt()
     }
 
     // MARK: - PostProcessingService
@@ -63,7 +61,12 @@ public final class GrokPostProcessingService: PostProcessingService, @unchecked 
     }
 
     public func process(segments: [TranscriptSegment]) async throws -> ProcessedTranscript {
-        guard !apiKey.isEmpty else {
+        try await process(segments: segments, level: .medium)
+    }
+
+    public func process(segments: [TranscriptSegment], level: CleanupLevel) async throws -> ProcessedTranscript {
+        let key = currentAPIKey()
+        guard !key.isEmpty else {
             throw PostProcessingError.missingAPIKey
         }
         guard !segments.isEmpty else {
@@ -71,8 +74,9 @@ public final class GrokPostProcessingService: PostProcessingService, @unchecked 
         }
 
         let filtered = applyLocalFilter(to: segments)
+        let prompt = PostProcessingPrompt(level: level)
         let request = try requestBuilder.makeRequest(
-            apiKey: apiKey,
+            apiKey: key,
             systemPrompt: prompt.systemPrompt,
             userPrompt: prompt.userPrompt(for: filtered)
         )
@@ -88,8 +92,13 @@ public final class GrokPostProcessingService: PostProcessingService, @unchecked 
             startTime: start,
             endTime: end,
             sourceSegmentIDs: segments.map(\.id),
-            confidence: avgConfidence
+            confidence: avgConfidence,
+            usedCloud: true
         )
+    }
+
+    private func currentAPIKey() -> String {
+        injectedKey ?? GrokAPIKeySource.resolve() ?? ""
     }
 
     // MARK: - Local pre-pass
@@ -132,7 +141,20 @@ public final class GrokPostProcessingService: PostProcessingService, @unchecked 
 
 struct PostProcessingPrompt {
 
-    let systemPrompt: String = """
+    let level: CleanupLevel
+
+    init(level: CleanupLevel = .medium) {
+        self.level = level
+    }
+
+    var systemPrompt: String {
+        switch level {
+        case .none:
+            return "You are a post-processor for a voice-to-text app. Return the transcript exactly as provided, with no edits whatsoever.\n\nOutput: the text only, with no preamble, no explanation, and no quotation marks."
+        case .light:
+            return "You are a post-processor for a voice-to-text app. Strip filler words (\"um\", \"uh\", \"er\", \"like\", \"you know\") and fix obvious grammar errors only. Do not rephrase, restructure, or remove any content.\n\nOutput: the cleaned text only, with no preamble, no explanation, and no quotation marks. Preserve the original language of the input."
+        case .medium:
+            return """
     You are a post-processor for a voice-to-text app. Your job is to
     clean up raw speech-to-text output for display. Apply these rules
     IN ORDER:
@@ -155,6 +177,10 @@ struct PostProcessingPrompt {
     and no quotation marks. Preserve the original language of the
     input.
     """
+        case .high:
+            return "You are a post-processor for a voice-to-text app. Condense the transcript aggressively: drop all redundancy, filler, self-corrections, and restatements. Prioritize brevity. Keep only the core information.\n\nOutput: the condensed text only, with no preamble, no explanation, and no quotation marks. Preserve the original language of the input."
+        }
+    }
 
     func userPrompt(for segments: [TranscriptSegment]) -> String {
         let numbered = segments.enumerated()

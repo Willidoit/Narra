@@ -59,7 +59,7 @@ public final class ServiceOrchestrator: @unchecked Sendable {
         self.localTranscriber = LocalTranscriptionService(
             configuration: LocalTranscriptionService.Configuration(modelManager: modelManager)
         )
-        self.cloudProcessor = GrokPostProcessingService(apiKey: configuration.apiKey)
+        self.cloudProcessor = GrokPostProcessingService()
         self.localProcessor = LocalPostProcessingService(
             configuration: LocalPostProcessingService.Configuration(modelManager: modelManager)
         )
@@ -91,28 +91,19 @@ public final class ServiceOrchestrator: @unchecked Sendable {
     // MARK: - Transcription
 
     public func transcribeWithFallback(_ audio: AudioChunk) async throws -> TranscriptSegment {
-        switch pickOrder() {
-        case .cloud:
-            do {
-                return try await cloudTranscriber.transcribe(audio: audio)
-            } catch {
-                if isLocalAvailable {
-                    return try await localTranscriber.transcribe(audio: audio)
-                }
-                throw error
-            }
-        case .local:
-            return try await localTranscriber.transcribe(audio: audio)
-        }
+        // xAI has no audio/transcriptions endpoint as of 2026 (404). Always
+        // use the local WhisperKit pipeline. Cloud is still used for
+        // post-processing (Grok chat/completions).
+        return try await localTranscriber.transcribe(audio: audio)
     }
 
     // MARK: - Post-processing
 
-    public func processWithFallback(_ segments: [TranscriptSegment]) async throws -> ProcessedTranscript {
+    public func processWithFallback(_ segments: [TranscriptSegment], level: CleanupLevel) async throws -> ProcessedTranscript {
         switch pickOrder() {
         case .cloud:
             do {
-                return try await cloudProcessor.process(segments: segments)
+                return try await cloudProcessor.process(segments: segments, level: level)
             } catch {
                 if isLocalAvailable {
                     return try await localProcessor.process(segments: segments)
@@ -124,8 +115,8 @@ public final class ServiceOrchestrator: @unchecked Sendable {
         }
     }
 
-    public func processWithFallback(_ segment: TranscriptSegment) async throws -> ProcessedTranscript {
-        try await processWithFallback([segment])
+    public func processWithFallback(_ segment: TranscriptSegment, level: CleanupLevel) async throws -> ProcessedTranscript {
+        try await processWithFallback([segment], level: level)
     }
 
     // MARK: - Selection logic
