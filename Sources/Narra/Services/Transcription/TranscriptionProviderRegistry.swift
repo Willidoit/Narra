@@ -12,6 +12,9 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable {
     case openAI
     case whisperCpp
     case parakeet
+    case deepgram
+    case elevenLabs
+    case appleSpeech
 }
 
 // MARK: - ProviderKind
@@ -128,17 +131,61 @@ public enum TranscriptionProviderRegistry {
             id: .openAI,
             displayName: "OpenAI",
             kind: .cloud,
-            status: .stubbed,
+            status: .wired,
             requiresAPIKey: true,
             models: [
+                ProviderModel(id: "gpt-4o-transcribe", displayName: "GPT-4o Transcribe"),
+                ProviderModel(id: "gpt-4o-mini-transcribe", displayName: "GPT-4o Mini Transcribe"),
                 ProviderModel(id: "whisper-1", displayName: "Whisper 1"),
             ],
-            defaultModelID: "whisper-1"
+            defaultModelID: "gpt-4o-mini-transcribe"
+        ),
+        TranscriptionProvider(
+            id: .deepgram,
+            displayName: "Deepgram",
+            kind: .cloud,
+            status: .wired,
+            requiresAPIKey: true,
+            models: [
+                ProviderModel(id: "nova-3", displayName: "Nova 3"),
+                ProviderModel(id: "nova-2", displayName: "Nova 2"),
+            ],
+            defaultModelID: "nova-3"
+        ),
+        TranscriptionProvider(
+            id: .elevenLabs,
+            displayName: "ElevenLabs",
+            kind: .cloud,
+            status: .wired,
+            requiresAPIKey: true,
+            models: [
+                ProviderModel(id: "scribe_v1", displayName: "Scribe v1"),
+            ],
+            defaultModelID: "scribe_v1"
+        ),
+        TranscriptionProvider(
+            id: .appleSpeech,
+            displayName: "Apple Speech",
+            kind: .local,
+            status: .wired,
+            requiresAPIKey: false,
+            models: [
+                ProviderModel(id: "en-US", displayName: "English (US)"),
+                ProviderModel(id: "en-GB", displayName: "English (UK)"),
+                ProviderModel(id: "es-ES", displayName: "Spanish (Spain)"),
+                ProviderModel(id: "fr-FR", displayName: "French (France)"),
+                ProviderModel(id: "de-DE", displayName: "German"),
+                ProviderModel(id: "ja-JP", displayName: "Japanese"),
+            ],
+            defaultModelID: "en-US"
         ),
         TranscriptionProvider(
             id: .whisperCpp,
             displayName: "whisper.cpp",
             kind: .local,
+            // Stub until ggerganov/whisper.cpp is vendored as a CWhisper
+            // SwiftPM C-target. Stays in the registry so the UI keeps the
+            // "Coming soon" badge users can plan around.
             status: .stubbed,
             requiresAPIKey: false,
             models: [

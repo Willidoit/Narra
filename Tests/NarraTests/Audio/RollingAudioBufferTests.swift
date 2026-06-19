@@ -125,7 +125,7 @@ final class RollingAudioBufferTests: XCTestCase {
 
     func test_flush_returnsAndClearsContents() {
         let buffer = RollingAudioBuffer(capacitySeconds: 5.0, sampleRate: 16_000)
-        let samples = [1, 2, 3, 4, 5]
+        let samples: [Int16] = [1, 2, 3, 4, 5]
         buffer.append(samples)
 
         let flushed = buffer.flush()

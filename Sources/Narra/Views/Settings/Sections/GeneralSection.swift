@@ -8,6 +8,7 @@ import SwiftUI
 
 struct GeneralSection: View {
     @ObservedObject private var settings = AppSettings.shared
+    @Environment(\.openWindow) private var openWindow
 
     private var appVersion: String {
         (Bundle.main.object(forInfoDictionaryKey: "CFBundleShortVersionString") as? String) ?? "dev"
@@ -78,7 +79,7 @@ struct GeneralSection: View {
                     .fixedSize(horizontal: false, vertical: true)
             }
             .frame(maxWidth: .infinity, alignment: .leading)
-            Button(action: { settings.hasCompletedOnboarding = false }) {
+            Button(action: rerunOnboarding) {
                 Text("Re-run onboarding…")
                     .font(Typography.sans(12, .medium))
                     .foregroundStyle(Palette.canvas)
@@ -91,6 +92,12 @@ struct GeneralSection: View {
             }
             .buttonStyle(.plain)
         }
+    }
+
+    private func rerunOnboarding() {
+        settings.hasCompletedOnboarding = false
+        NSApp.activate(ignoringOtherApps: true)
+        openWindow(id: "onboarding")
     }
 
     // MARK: - About

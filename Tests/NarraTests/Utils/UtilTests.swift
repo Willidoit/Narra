@@ -100,7 +100,7 @@ final class MultipartFormDataBuilderTests: XCTestCase {
         let str = String(data: result.data, encoding: .utf8)!
         XCTAssertTrue(str.contains("filename=\"audio.wav\""))
         XCTAssertTrue(str.contains("Content-Type: audio/wav"))
-        XCTAssertTrue(result.data.contains(contentsOf: Data([1, 2, 3])))
+        XCTAssertTrue(result.data.range(of: Data([1, 2, 3])) != nil)
     }
 
     func test_build_endsWithTerminatingBoundary() {

@@ -48,9 +48,10 @@ final class KeyRecorderNSView: NSView {
                : currentBinding.displayString)
 
         let useMono = !isRecordingKeys && (currentBinding.keyChar != nil || currentBinding.modifierFlags != 0)
-        let font: NSFont = useMono
+        let primary: NSFont? = useMono
             ? NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
             : NSFont.systemFont(ofSize: 11)
+        let font = primary ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
         let color: NSColor = isRecordingKeys
             ? NSColor.white.withAlphaComponent(0.55)
             : NSColor(red: 0.949, green: 0.945, blue: 0.925, alpha: 1.0) // matches Palette.darkInk

@@ -11,10 +11,11 @@ final class TranscriptionProviderRegistryTests: XCTestCase {
             XCTAssertNotNil(byID[id], "Registry missing entry for \(id.rawValue)")
         }
 
-        XCTAssertEqual(byID[.groq]?.status, .wired)
-        XCTAssertEqual(byID[.whisperKit]?.status, .wired)
+        for id in [ProviderID.groq, .openAI, .deepgram, .elevenLabs, .whisperKit, .appleSpeech] {
+            XCTAssertEqual(byID[id]?.status, .wired, "\(id.rawValue) should be wired")
+        }
 
-        for id in [ProviderID.openAI, .whisperCpp, .parakeet] {
+        for id in [ProviderID.whisperCpp, .parakeet] {
             XCTAssertEqual(byID[id]?.status, .stubbed, "\(id.rawValue) should be stubbed")
         }
     }

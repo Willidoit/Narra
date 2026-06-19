@@ -12,8 +12,8 @@ struct SettingsRoot: View {
     // MARK: - Section
 
     enum Section: String, CaseIterable, Identifiable, Hashable {
-        case transcription
-        case cloudLLM
+        case models
+        case postProcessing
         case hotkeys
         case audio
         case general
@@ -22,33 +22,37 @@ struct SettingsRoot: View {
 
         var title: String {
             switch self {
-            case .transcription: return "Transcription"
-            case .cloudLLM:      return "Cloud LLM"
-            case .hotkeys:       return "Hotkeys"
-            case .audio:         return "Audio"
-            case .general:       return "General"
+            case .models:         return "Models"
+            case .postProcessing: return "Post Processing"
+            case .hotkeys:        return "Hotkeys"
+            case .audio:          return "Audio"
+            case .general:        return "General"
             }
         }
 
         var symbol: String {
             switch self {
-            case .transcription: return "waveform"
-            case .cloudLLM:      return "cloud"
-            case .hotkeys:       return "keyboard"
-            case .audio:         return "mic"
-            case .general:       return "gearshape"
+            case .models:         return "waveform"
+            case .postProcessing: return "wand.and.stars"
+            case .hotkeys:        return "keyboard"
+            case .audio:          return "mic"
+            case .general:        return "gearshape"
             }
         }
     }
 
-    @State private var selected: Section = .transcription
+    @State private var selected: Section = .models
+    // Locking columnVisibility kills the auto-injected sidebar toggle —
+    // the icon that otherwise drifts into the detail pane on collapse.
+    @State private var columnVisibility: NavigationSplitViewVisibility = .all
 
     var body: some View {
-        NavigationSplitView {
+        NavigationSplitView(columnVisibility: $columnVisibility) {
             sidebar
         } detail: {
             detail
         }
+        .navigationSplitViewStyle(.balanced)
         .frame(minWidth: 760, minHeight: 520)
         .background(Palette.canvas.ignoresSafeArea())
         .preferredColorScheme(.dark)
@@ -64,8 +68,12 @@ struct SettingsRoot: View {
             Spacer()
         }
         .padding(Spacing.md)
+        // ponytail: top inset clears the system traffic lights so the
+        // sidebar's first row + border don't run under them.
+        .padding(.top, 28)
         .frame(minWidth: 200)
         .background(Palette.canvas)
+        .toolbar(removing: .sidebarToggle)
     }
 
     private func sidebarRow(_ section: Section) -> some View {
@@ -114,11 +122,11 @@ struct SettingsRoot: View {
 
                 GlassCard(padding: Spacing.lg, radius: CornerRadius.xl) {
                     switch selected {
-                    case .transcription: TranscriptionSection()
-                    case .cloudLLM:      CloudLLMSection()
-                    case .hotkeys:       HotkeysSection()
-                    case .audio:         AudioSection()
-                    case .general:       GeneralSection()
+                    case .models:         ModelsSection()
+                    case .postProcessing: PostProcessingSection()
+                    case .hotkeys:        HotkeysSection()
+                    case .audio:          AudioSection()
+                    case .general:        GeneralSection()
                     }
                 }
             }

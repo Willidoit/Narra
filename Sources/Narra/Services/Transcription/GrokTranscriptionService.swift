@@ -21,9 +21,12 @@ public final class GrokTranscriptionService: TranscriptionService, @unchecked Se
         public var timeout: TimeInterval
         public var languageHint: String?
 
+        // ponytail: registry-labelled "Groq" is Groq Inc.'s OpenAI-compatible
+        // STT, not xAI's Grok chat model. xAI exposes no audio/transcriptions
+        // endpoint. Same Keychain slot (ProviderID.groq); only the host moves.
         public init(
-            baseURL: URL = URL(string: "https://api.x.ai/v1")!,
-            model: String = "grok-2-audio",
+            baseURL: URL = URL(string: "https://api.groq.com/openai/v1")!,
+            model: String = "whisper-large-v3-turbo",
             timeout: TimeInterval = 30,
             languageHint: String? = nil
         ) {

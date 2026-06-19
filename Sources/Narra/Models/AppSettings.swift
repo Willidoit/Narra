@@ -56,7 +56,7 @@ struct KeyBinding: Codable, Equatable, Sendable {
         if let char = keyChar {
             parts.append(char == " " ? "Space" : char.uppercased())
         }
-        return parts.joined(separator: "")
+        return parts.joined(separator: " + ")
     }
 }
 
@@ -107,6 +107,24 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
 
     @Published var hasCompletedOnboarding: Bool {
         didSet { UserDefaults.standard.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding") }
+    }
+
+    // MARK: - Post-processing
+
+    @Published var postProcessingEnabled: Bool {
+        didSet { UserDefaults.standard.set(postProcessingEnabled, forKey: "postProcessingEnabled") }
+    }
+
+    @Published var smartCodeDetection: Bool {
+        didSet { UserDefaults.standard.set(smartCodeDetection, forKey: "smartCodeDetection") }
+    }
+
+    @Published var smartLengthEscalation: Bool {
+        didSet { UserDefaults.standard.set(smartLengthEscalation, forKey: "smartLengthEscalation") }
+    }
+
+    @Published var smartFillerThreshold: Bool {
+        didSet { UserDefaults.standard.set(smartFillerThreshold, forKey: "smartFillerThreshold") }
     }
 
     private init() {
@@ -161,6 +179,13 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
         }
 
         hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
+
+        // Post-processing defaults — all opt-out, default-on so the cleanup
+        // pipeline runs automatically for first-time users.
+        postProcessingEnabled = (UserDefaults.standard.object(forKey: "postProcessingEnabled") as? Bool) ?? true
+        smartCodeDetection = (UserDefaults.standard.object(forKey: "smartCodeDetection") as? Bool) ?? true
+        smartLengthEscalation = (UserDefaults.standard.object(forKey: "smartLengthEscalation") as? Bool) ?? true
+        smartFillerThreshold = (UserDefaults.standard.object(forKey: "smartFillerThreshold") as? Bool) ?? true
     }
 
     private func save(binding: KeyBinding, forKey key: String) {

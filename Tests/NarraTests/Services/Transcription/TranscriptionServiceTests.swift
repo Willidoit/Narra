@@ -6,23 +6,36 @@ final class TranscriptionServiceTests: XCTestCase {
     // MARK: - Mock service used by these tests
 
     /// A simple test double that records calls and returns canned results.
-    actor MockTranscriptionService: TranscriptionService {
+    /// Class + lock so the `TranscriptionService` conformance lives on a
+    /// nonisolated type (avoids Swift 6 actor-conformance isolation errors).
+    final class MockTranscriptionService: TranscriptionService, @unchecked Sendable {
         struct Call: Sendable, Equatable {
             let sampleCount: Int
             let sampleRate: Double
         }
 
-        private(set) var callCount = 0
-        private(set) var lastAudio: AudioChunk?
+        private let queue = DispatchQueue(label: "MockTranscriptionService.state")
+        nonisolated(unsafe) private var _callCount = 0
+        nonisolated(unsafe) private var _lastAudio: AudioChunk?
         private let response: TranscriptSegment?
 
         init(response: TranscriptSegment? = nil) {
             self.response = response
         }
 
+        var callCount: Int {
+            queue.sync { _callCount }
+        }
+
+        var lastAudio: AudioChunk? {
+            queue.sync { _lastAudio }
+        }
+
         func transcribe(audio: AudioChunk) async throws -> TranscriptSegment {
-            callCount += 1
-            lastAudio = audio
+            queue.sync {
+                _callCount += 1
+                _lastAudio = audio
+            }
             if let response {
                 return response
             } else {
@@ -69,8 +82,7 @@ final class TranscriptionServiceTests: XCTestCase {
 
         let result = try await mock.transcribe(audio: chunk)
         XCTAssertEqual(result, expected)
-        let calls = await mock.callCount
-        XCTAssertEqual(calls, 1)
+        XCTAssertEqual(mock.callCount, 1)
     }
 
     func test_transcribe_propagatesError() async {

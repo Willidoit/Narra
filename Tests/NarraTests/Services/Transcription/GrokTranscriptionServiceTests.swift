@@ -6,6 +6,15 @@ final class GrokTranscriptionServiceTests: XCTestCase {
 
     // MARK: - Request builder
 
+    func test_defaultConfiguration_pointsAtGroqInc() {
+        // Regression: a previous default targeted xAI (api.x.ai), which has
+        // no audio/transcriptions endpoint. Provider ID `.groq` must hit
+        // Groq Inc.'s OpenAI-compatible API.
+        let config = GrokTranscriptionService.Configuration()
+        XCTAssertEqual(config.baseURL.host, "api.groq.com")
+        XCTAssertEqual(config.baseURL.path, "/openai/v1")
+    }
+
     func test_requestBuilder_setsAuthHeader() throws {
         let builder = GrokTranscriptionRequestBuilder(
             configuration: GrokTranscriptionService.Configuration(model: "grok-2-audio")

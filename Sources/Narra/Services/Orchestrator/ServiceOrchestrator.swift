@@ -41,6 +41,7 @@ public final class ServiceOrchestrator: @unchecked Sendable {
     public let configuration: Configuration
     public let cloudTranscriber: GrokTranscriptionService
     public let localTranscriber: LocalTranscriptionService
+    public let whisperCpp: WhisperCppTranscriptionService
     public let cloudProcessor: GrokPostProcessingService
     public let localProcessor: LocalPostProcessingService
     public let modelManager: LocalModelManager
@@ -67,6 +68,7 @@ public final class ServiceOrchestrator: @unchecked Sendable {
         self.localTranscriber = LocalTranscriptionService(
             configuration: LocalTranscriptionService.Configuration(modelManager: modelManager)
         )
+        self.whisperCpp = WhisperCppTranscriptionService()
         self.cloudProcessor = GrokPostProcessingService()
         self.localProcessor = LocalPostProcessingService(
             configuration: LocalPostProcessingService.Configuration(modelManager: modelManager)
@@ -99,19 +101,58 @@ public final class ServiceOrchestrator: @unchecked Sendable {
     // MARK: - Transcription
 
     public func transcribeWithFallback(_ audio: AudioChunk) async throws -> TranscriptSegment {
-        // xAI has no audio/transcriptions endpoint as of 2026 (404). Always
-        // use the local WhisperKit pipeline. Cloud is still used for
-        // post-processing (Grok chat/completions).
-        return try await localTranscriber.transcribe(audio: audio)
+        let service = makeService(for: activeProviderID, model: activeModelID)
+        do {
+            return try await service.transcribe(audio: audio)
+        } catch {
+            // Fall back to local WhisperKit when the active provider fails
+            // for any reason other than empty audio — matches prior behavior.
+            if case TranscriptionError.emptyAudio = error { throw error }
+            if activeProviderID == .whisperKit { throw error }
+            return try await localTranscriber.transcribe(audio: audio)
+        }
     }
 
-    /// Streaming transcription: feed live audio windows in, get
-    /// `TranscriptSegment`s out as Whisper finishes each one. Local-only for
-    /// the same reason as `transcribeWithFallback`.
     public func transcribeStream(
         _ stream: AsyncStream<AudioChunk>
     ) -> AsyncThrowingStream<TranscriptSegment, Error> {
-        localTranscriber.transcribe(stream: stream)
+        makeService(for: activeProviderID, model: activeModelID).transcribe(stream: stream)
+    }
+
+    /// Construct a fresh service for the requested provider + model. Cheap
+    /// for cloud (URLSession-backed); WhisperKit is the only expensive one
+    /// and reuses its cached singleton via `localTranscriber`.
+    public func makeService(for id: ProviderID, model: String) -> TranscriptionService {
+        switch id {
+        case .groq:
+            return GrokTranscriptionService(
+                configuration: .init(model: model)
+            )
+        case .openAI:
+            return OpenAITranscriptionService(
+                configuration: .init(model: model)
+            )
+        case .deepgram:
+            return DeepgramTranscriptionService(
+                configuration: .init(model: model)
+            )
+        case .elevenLabs:
+            return ElevenLabsTranscriptionService(
+                configuration: .init(model: model)
+            )
+        case .whisperKit:
+            return localTranscriber
+        case .appleSpeech:
+            return AppleSpeechTranscriptionService(
+                configuration: .init(localeIdentifier: model)
+            )
+        case .whisperCpp:
+            return whisperCpp
+        case .parakeet:
+            // Still stubbed in the registry — fall through to WhisperKit so the
+            // pipeline keeps working if a user selects it before it's wired.
+            return localTranscriber
+        }
     }
 
     // MARK: - Post-processing
@@ -144,29 +185,7 @@ public final class ServiceOrchestrator: @unchecked Sendable {
     public func setProvider(_ id: ProviderID, model: String) {
         activeProviderID = id
         activeModelID = model
-        switch id {
-        case .groq:
-            // ponytail: GrokTranscriptionService takes its model id via
-            // Configuration at init time and exposes no setter. Storing
-            // the choice on the orchestrator is enough for Task 1; when
-            // the cloud STT endpoint comes back online (see
-            // transcribeWithFallback note about xAI 404), the cloud
-            // transcriber should be rebuilt here with a fresh
-            // Configuration(model: model). Ceiling: model selection is
-            // not yet plumbed end-to-end for Groq STT.
-            NSLog("Narra: provider set to groq (model=\(model)); applied on next cloud STT call.")
-        case .whisperKit:
-            // ponytail: LocalTranscriptionService also fixes its model
-            // name at init. Same upgrade path as Groq — rebuild the
-            // service when we wire model switching for WhisperKit.
-            NSLog("Narra: provider set to whisperKit (model=\(model)); requires service rebuild to take effect.")
-        case .openAI, .whisperCpp, .parakeet:
-            // ponytail: stubbed providers — UI shows them, orchestrator
-            // ignores them. Upgrade path: implement a real
-            // TranscriptionService and flip status to .wired in the
-            // registry.
-            NSLog("Narra: provider \(id.rawValue) is not yet wired; ignoring.")
-        }
+        NSLog("Narra: provider set to \(id.rawValue) (model=\(model))")
     }
 
     // MARK: - Selection logic

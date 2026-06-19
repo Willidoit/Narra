@@ -30,6 +30,13 @@ final class ContentViewModel: ObservableObject {
     /// transcription overlaps with speech. Result is the partial segments
     /// collected up to stop time.
     private var streamingTask: Task<[TranscriptSegment], Error>?
+    /// Per-recording live cleanup engine. Created on start, flushed on stop.
+    private var streamingProcessor: StreamingPostProcessor?
+    /// Wall-clock time the recording began, for SmartContext length escalation.
+    private var recordingStartTime: Date?
+    /// Frontmost bundle ID at start time, captured before we steal focus, so
+    /// SmartContext can detect code-editor recordings.
+    private var recordingFrontmostBundleID: String?
     /// Set true as soon as the capture loop sees a level above the speech
     /// threshold. Used to drop empty takes on release.
     private var heardSpeech: Bool = false
@@ -117,9 +124,26 @@ final class ContentViewModel: ObservableObject {
         statusText = "Recording"
         errorMessage = nil
         heardSpeech = false
+        recordingStartTime = Date()
+        recordingFrontmostBundleID = NSWorkspace.shared.frontmostApplication?.bundleIdentifier
         if AppSettings.shared.muteOutputWhenRecording {
             SystemOutput.muteForRecording()
         }
+        // Stand up a live cleanup engine for this take. Filter passes run
+        // synchronously per sentence, so paste-on-stop barely waits.
+        let mode = AppSettings.shared.orchestratorMode
+        let useCloud = (mode != .localOnly)
+        let processor = StreamingPostProcessor(
+            configuration: .init(
+                cloudProcessor: orchestrator.cloudProcessor,
+                localProcessor: orchestrator.localProcessor,
+                useCloud: useCloud,
+                startTime: recordingStartTime ?? Date(),
+                smartFillerThreshold: AppSettings.shared.smartFillerThreshold
+            )
+        )
+        streamingProcessor = processor
+
         // Wire the streaming consumer BEFORE start() so the tap's first
         // samples have somewhere to go.
         let chunkStream = captureManager.chunkStream()
@@ -128,6 +152,7 @@ final class ContentViewModel: ObservableObject {
             var collected: [TranscriptSegment] = []
             for try await segment in segmentStream {
                 collected.append(segment)
+                await processor.feed(segment: segment)
             }
             return collected
         }
@@ -164,6 +189,9 @@ final class ContentViewModel: ObservableObject {
         _ = captureManager.stop()
         streamingTask?.cancel()
         streamingTask = nil
+        streamingProcessor = nil
+        recordingStartTime = nil
+        recordingFrontmostBundleID = nil
         SystemOutput.restore()
         audioLevels = Array(repeating: 0, count: 40)
         statusText = "Ready"
@@ -180,13 +208,19 @@ final class ContentViewModel: ObservableObject {
 
         let pendingStream = streamingTask
         streamingTask = nil
+        let activeProcessor = streamingProcessor
+        streamingProcessor = nil
+        let startedAt = recordingStartTime
+        let frontmost = recordingFrontmostBundleID
+        recordingStartTime = nil
+        recordingFrontmostBundleID = nil
         Task {
             // Stops the engine and finishes the chunk stream (tail emitted
             // through it). The returned chunk is unused while streaming —
             // the rolling buffer overlaps with already-emitted windows.
             _ = captureManager.stop()
             do {
-                let level = AppSettings.shared.cleanupLevel
+                let userLevel = AppSettings.shared.cleanupLevel
                 let segments = (try await pendingStream?.value) ?? []
                 let combinedText = segments
                     .map { $0.text.trimmingCharacters(in: .whitespacesAndNewlines) }
@@ -197,30 +231,50 @@ final class ContentViewModel: ObservableObject {
                     uiMode = .hidden
                     return
                 }
-                let start = segments.first?.startTime ?? Date()
-                let end = segments.last?.endTime ?? start
-                let conf = segments.map { $0.confidence }.min() ?? 1.0
-                let segment = TranscriptSegment(
-                    text: combinedText,
-                    startTime: start,
-                    endTime: end,
-                    confidence: conf
-                )
-                // Short utterances (1-2 words) don't need an LLM cleanup
-                // pass — there's nothing to condense or de-filler. Skip
-                // the round-trip and paste raw Whisper output.
-                let wordCount = combinedText.split(whereSeparator: { $0.isWhitespace }).count
+                let duration = startedAt.map { Date().timeIntervalSince($0) } ?? 0
+                let effectiveLevel: CleanupLevel
+                if AppSettings.shared.postProcessingEnabled {
+                    effectiveLevel = SmartContext.effectiveLevel(
+                        userLevel: userLevel,
+                        durationSeconds: duration,
+                        settings: AppSettings.shared,
+                        frontmost: frontmost
+                    )
+                } else {
+                    effectiveLevel = .none
+                }
+
                 let processed: ProcessedTranscript
-                if wordCount <= 2 {
+                if !AppSettings.shared.postProcessingEnabled || effectiveLevel == .none {
+                    // Cleanup disabled or smart-skipped (e.g. code editor) —
+                    // paste the raw combined transcript.
+                    let start = segments.first?.startTime ?? Date()
+                    let end = segments.last?.endTime ?? start
+                    let conf = segments.map { $0.confidence }.min() ?? 1.0
                     processed = ProcessedTranscript(
                         text: combinedText,
                         startTime: start,
                         endTime: end,
+                        sourceSegmentIDs: segments.map(\.id),
                         confidence: conf,
                         usedCloud: false
                     )
+                } else if let processor = activeProcessor {
+                    statusText = "Cleaning..."
+                    processed = await processor.flush(level: effectiveLevel)
                 } else {
-                    processed = try await orchestrator.processWithFallback(segment, level: level)
+                    // Fallback (no processor — shouldn't happen for normal
+                    // recordings, but startRecording could be re-entered).
+                    let start = segments.first?.startTime ?? Date()
+                    let end = segments.last?.endTime ?? start
+                    let conf = segments.map { $0.confidence }.min() ?? 1.0
+                    let segment = TranscriptSegment(
+                        text: combinedText,
+                        startTime: start,
+                        endTime: end,
+                        confidence: conf
+                    )
+                    processed = try await orchestrator.processWithFallback(segment, level: effectiveLevel)
                 }
                 transcriptText = processed.text
                 lastTranscript = processed.text

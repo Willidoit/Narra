@@ -25,6 +25,15 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         Task { @MainActor in
             try? await AppServices.shared.orchestrator.localTranscriber.preload()
         }
+
+        // Warm Groq's TLS connection so the first post-processing call
+        // doesn't pay DNS + TCP + TLS latency on top of the LLM round-trip.
+        // ponytail: HEAD request is enough; URLSession reuses the connection.
+        if let url = URL(string: "https://api.groq.com/") {
+            var req = URLRequest(url: url, timeoutInterval: 5)
+            req.httpMethod = "HEAD"
+            URLSession.shared.dataTask(with: req).resume()
+        }
     }
 }
 
