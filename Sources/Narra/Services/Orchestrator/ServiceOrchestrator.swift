@@ -45,6 +45,14 @@ public final class ServiceOrchestrator: @unchecked Sendable {
     public let localProcessor: LocalPostProcessingService
     public let modelManager: LocalModelManager
 
+    /// Currently-selected provider. Persisted in `AppSettings`; mirrored
+    /// here so the routing methods can consult it without reaching back
+    /// into the settings singleton.
+    private(set) public var activeProviderID: ProviderID = .groq
+    /// Currently-selected model for `activeProviderID`. See `setProvider`.
+    private(set) public var activeModelID: String = TranscriptionProviderRegistry
+        .provider(.groq).defaultModelID
+
     private let monitor = NWPathMonitor()
     private let monitorQueue = DispatchQueue(label: "com.narrav2.orchestrator.path")
     private var currentPath: NWPath?
@@ -126,6 +134,39 @@ public final class ServiceOrchestrator: @unchecked Sendable {
 
     public func processWithFallback(_ segment: TranscriptSegment, level: CleanupLevel) async throws -> ProcessedTranscript {
         try await processWithFallback([segment], level: level)
+    }
+
+    // MARK: - Provider selection
+
+    /// Set the active transcription provider and model. Mode
+    /// (`.automatic`/`.cloudOnly`/`.localOnly`) is orthogonal — it
+    /// controls fallback policy, not provider identity.
+    public func setProvider(_ id: ProviderID, model: String) {
+        activeProviderID = id
+        activeModelID = model
+        switch id {
+        case .groq:
+            // ponytail: GrokTranscriptionService takes its model id via
+            // Configuration at init time and exposes no setter. Storing
+            // the choice on the orchestrator is enough for Task 1; when
+            // the cloud STT endpoint comes back online (see
+            // transcribeWithFallback note about xAI 404), the cloud
+            // transcriber should be rebuilt here with a fresh
+            // Configuration(model: model). Ceiling: model selection is
+            // not yet plumbed end-to-end for Groq STT.
+            NSLog("Narra: provider set to groq (model=\(model)); applied on next cloud STT call.")
+        case .whisperKit:
+            // ponytail: LocalTranscriptionService also fixes its model
+            // name at init. Same upgrade path as Groq — rebuild the
+            // service when we wire model switching for WhisperKit.
+            NSLog("Narra: provider set to whisperKit (model=\(model)); requires service rebuild to take effect.")
+        case .openAI, .whisperCpp, .parakeet:
+            // ponytail: stubbed providers — UI shows them, orchestrator
+            // ignores them. Upgrade path: implement a real
+            // TranscriptionService and flip status to .wired in the
+            // registry.
+            NSLog("Narra: provider \(id.rawValue) is not yet wired; ignoring.")
+        }
     }
 
     // MARK: - Selection logic

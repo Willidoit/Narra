@@ -92,6 +92,23 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
         didSet { UserDefaults.standard.set(muteOutputWhenRecording, forKey: "muteOutputWhenRecording") }
     }
 
+    @Published var selectedProviderID: ProviderID {
+        didSet { UserDefaults.standard.set(selectedProviderID.rawValue, forKey: "selectedProviderID") }
+    }
+
+    @Published var selectedModelID: String {
+        didSet {
+            UserDefaults.standard.set(
+                selectedModelID,
+                forKey: "selectedModelID:\(selectedProviderID.rawValue)"
+            )
+        }
+    }
+
+    @Published var hasCompletedOnboarding: Bool {
+        didSet { UserDefaults.standard.set(hasCompletedOnboarding, forKey: "hasCompletedOnboarding") }
+    }
+
     private init() {
         // Defaults: fn for push-to-talk, fn+Space for push-to-toggle.
         let functionFlag = NSEvent.ModifierFlags.function.rawValue
@@ -126,6 +143,24 @@ final class AppSettings: ObservableObject, @unchecked Sendable {
 
         launchAtLogin = UserDefaults.standard.bool(forKey: "launchAtLogin")
         muteOutputWhenRecording = UserDefaults.standard.bool(forKey: "muteOutputWhenRecording")
+
+        let resolvedProviderID: ProviderID
+        if let raw = UserDefaults.standard.string(forKey: "selectedProviderID"),
+           let id = ProviderID(rawValue: raw) {
+            resolvedProviderID = id
+        } else {
+            resolvedProviderID = .groq
+        }
+        selectedProviderID = resolvedProviderID
+
+        let modelKey = "selectedModelID:\(resolvedProviderID.rawValue)"
+        if let stored = UserDefaults.standard.string(forKey: modelKey), !stored.isEmpty {
+            selectedModelID = stored
+        } else {
+            selectedModelID = TranscriptionProviderRegistry.provider(resolvedProviderID).defaultModelID
+        }
+
+        hasCompletedOnboarding = UserDefaults.standard.bool(forKey: "hasCompletedOnboarding")
     }
 
     private func save(binding: KeyBinding, forKey key: String) {

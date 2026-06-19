@@ -1,7 +1,6 @@
 import SwiftUI
 import AppKit
 import ApplicationServices
-import AVFoundation
 import IOKit.hid
 
 // MARK: - App Delegate
@@ -15,6 +14,7 @@ final class AppDelegate: NSObject, NSApplicationDelegate {
         // Activation policy is driven dynamically by WindowBehavior per uiMode:
         // .regular while Home is visible (Dock icon shown), .accessory otherwise.
         NSApp.setActivationPolicy(.accessory)
+        KeychainService.migrateLegacyGrokKeyIfNeeded()
         let axOpts = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(axOpts)
         IOHIDRequestAccess(kIOHIDRequestTypeListenEvent)
@@ -135,24 +135,3 @@ private struct MenuBarContent: View {
     }
 }
 
-// MARK: - Microphone enumeration
-
-@MainActor
-private final class MicrophoneList: ObservableObject {
-    @Published var devices: [AVCaptureDevice] = []
-    @Published var selectedUID: String? = nil
-
-    init() {
-        refresh()
-    }
-
-    func refresh() {
-        let session = AVCaptureDevice.DiscoverySession(
-            deviceTypes: [.microphone, .external],
-            mediaType: .audio,
-            position: .unspecified
-        )
-        devices = session.devices
-        selectedUID = UserDefaults.standard.string(forKey: "preferredMicUniqueID")
-    }
-}

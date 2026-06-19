@@ -58,7 +58,7 @@ private struct SettingsSection<Content: View>: View {
 private struct GeneralSettingsTab: View {
     @ObservedObject private var settings = AppSettings.shared
     @State private var apiKeyDraft = ""
-    @State private var storedKey: String? = KeychainService.load()
+    @State private var storedKey: String? = KeychainService.load(for: .groq)
     @State private var keySaved = false
     @State private var isValidating = false
     @State private var validationOK: Bool? = nil
@@ -203,13 +203,13 @@ private struct GeneralSettingsTab: View {
         }
         .onAppear {
             apiKeyDraft = GrokAPIKeySource.resolve() ?? ""
-            storedKey = KeychainService.load()
+            storedKey = KeychainService.load(for: .groq)
         }
     }
 
     private func saveKey() {
-        try? KeychainService.save(key: apiKeyDraft)
-        storedKey = KeychainService.load()
+        try? KeychainService.save(key: apiKeyDraft, for: .groq)
+        storedKey = KeychainService.load(for: .groq)
         keySaved = true
         validationOK = nil
         validationError = nil

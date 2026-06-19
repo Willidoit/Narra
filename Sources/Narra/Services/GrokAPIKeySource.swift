@@ -21,7 +21,7 @@ public enum GrokAPIKeySource {
 
     /// Try every source in order and return the first non-empty key.
     public static func resolve() -> String? {
-        if let keychain = KeychainService.load() {
+        if let keychain = KeychainService.load(for: .groq) {
             return keychain
         }
         if let env = ProcessInfo.processInfo.environment["GROK_API_KEY"],
