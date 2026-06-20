@@ -36,7 +36,7 @@ final class GrokPostProcessingServiceTests: XCTestCase {
             systemPrompt: "system",
             userPrompt: "user"
         )
-        XCTAssertEqual(request.url?.path, "/v1/chat/completions")
+        XCTAssertEqual(request.url?.path, "/openai/v1/chat/completions")
         XCTAssertEqual(request.httpMethod, "POST")
         XCTAssertEqual(
             request.value(forHTTPHeaderField: "Authorization"),

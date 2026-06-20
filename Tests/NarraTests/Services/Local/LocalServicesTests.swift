@@ -50,8 +50,8 @@ final class LocalModelManagerTests: XCTestCase {
         XCTAssertEqual(manager.localURL(for: spec), dest)
     }
 
-    func test_defaults_areWhisperTinyAndLlama3B() {
-        XCTAssertEqual(LocalModelManager.defaultWhisper.key, "whisper-tiny")
+    func test_defaults_areWhisperBaseAndLlama3B() {
+        XCTAssertEqual(LocalModelManager.defaultWhisper.key, "openai_whisper-base")
         XCTAssertTrue(LocalModelManager.defaultWhisper.url.absoluteString.contains("whisper"))
         XCTAssertEqual(LocalModelManager.defaultLLM.key, "llama-3.2-1b")
         XCTAssertTrue(LocalModelManager.defaultLLM.url.absoluteString.contains("Llama"))

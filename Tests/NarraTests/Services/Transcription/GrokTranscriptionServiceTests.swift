@@ -50,9 +50,11 @@ final class GrokTranscriptionServiceTests: XCTestCase {
         )
         let chunk = AudioChunk(samples: [0], sampleRate: 16_000)
         let request = try builder.makeRequest(audio: chunk, apiKey: "k")
-        let body = request.httpBody ?? Data()
-        XCTAssertTrue(String(data: body, encoding: .utf8)?.contains("name=\"language\"") == true)
-        XCTAssertTrue(String(data: body, encoding: .utf8)?.contains("en") == true)
+        // ponytail: body has binary WAV bytes; UTF-8 decode silently fails
+        // on those, so use Latin-1 which maps every byte 1:1 to a char.
+        let str = String(data: request.httpBody ?? Data(), encoding: .isoLatin1) ?? ""
+        XCTAssertTrue(str.contains("name=\"language\""))
+        XCTAssertTrue(str.contains("en"))
     }
 
     func test_requestBuilder_appendsWavFile() throws {
@@ -61,8 +63,7 @@ final class GrokTranscriptionServiceTests: XCTestCase {
         )
         let chunk = AudioChunk(samples: [0, 1, 2, 3], sampleRate: 16_000)
         let request = try builder.makeRequest(audio: chunk, apiKey: "k")
-        let body = request.httpBody ?? Data()
-        let str = String(data: body, encoding: .utf8) ?? ""
+        let str = String(data: request.httpBody ?? Data(), encoding: .isoLatin1) ?? ""
         XCTAssertTrue(str.contains("filename=\"audio.wav\""))
         XCTAssertTrue(str.contains("Content-Type: audio/wav"))
     }

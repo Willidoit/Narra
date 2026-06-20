@@ -10,7 +10,11 @@ final class AudioSampleConverterTests: XCTestCase {
     }
 
     func test_int16ToFloat_positiveMaxMapsToOne() {
-        XCTAssertEqual(AudioSampleConverter.float(from: [Int16.max]), [1.0])
+        // Standard PCM: int -> float divides by 32_768, so Int16.max lands
+        // at 0.9999695 (1 LSB short of 1.0). Use accuracy.
+        let result = AudioSampleConverter.float(from: [Int16.max])
+        XCTAssertEqual(result.count, 1)
+        XCTAssertEqual(result[0], 1.0, accuracy: 0.0001)
     }
 
     func test_int16ToFloat_negativeMinMapsToNegativeOne() {
@@ -57,13 +61,16 @@ final class AudioSampleConverterTests: XCTestCase {
     // MARK: - Round-trip
 
     func test_roundTrip_int16ToFloatToInt16_isLossyOnlyForTruncation() {
-        // Quantize a known value to int16 then back; we should land within 1 LSB.
+        // Quantize a known value to int16 then back; we should land within
+        // ~2 LSB. Rounding adds half an LSB; the asymmetric Int16 scale
+        // (max 32_767, min -32_768) adds the other half — 2 LSB is the
+        // honest tolerance for any value that isn't exactly representable.
         let original: [Float] = [0.25, -0.5, 0.75, -0.125]
         let asInt16 = AudioSampleConverter.int16(from: original)
         let back = AudioSampleConverter.float(from: asInt16)
 
+        let lsb: Float = 2.0 / Float(Int16.max)
         for (a, b) in zip(original, back) {
-            let lsb: Float = 1.0 / 32_768.0
             XCTAssertEqual(a, b, accuracy: lsb)
         }
     }

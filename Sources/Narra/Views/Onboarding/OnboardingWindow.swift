@@ -522,55 +522,59 @@ struct OnboardingWindow: View {
     // big progress bar and a byte counter.
     @ViewBuilder
     private func downloadStep(for provider: TranscriptionProvider) -> some View {
-        let model = provider.models.first(where: { $0.id == settings.selectedModelID })
-            ?? provider.models.first!
-        let state = downloads.state(for: provider.id, modelID: model.id)
+        // Registry guarantees every provider has at least one model, but
+        // bail to an empty view rather than `.first!`-crash if that ever
+        // breaks. Cheaper than a fatalError, no user-visible regression.
+        if let model = provider.models.first(where: { $0.id == settings.selectedModelID })
+            ?? provider.models.first {
+            let state = downloads.state(for: provider.id, modelID: model.id)
 
-        VStack(alignment: .leading, spacing: Spacing.md) {
-            Text("Download \(model.displayName)")
-                .font(Typography.serif(24, .medium))
-                .foregroundStyle(Palette.ink)
-            Text("\(provider.displayName) runs entirely on your Mac. The model is a one-time download — about \(approxSize(model)).")
-                .font(Typography.sans(13))
-                .foregroundStyle(Palette.muted)
-
-            switch state {
-            case .idle:
-                PillButton(title: "Start download",
-                           systemImage: "arrow.down.circle",
-                           style: .filled) {
-                    downloads.download(providerID: provider.id, modelID: model.id)
-                }
-            case .downloading(let frac):
-                ProgressView(value: frac)
-                    .progressViewStyle(.linear)
-                    .tint(Palette.greenInk)
-                Text("\(Int(frac * 100))% · \(byteCounter(model: model, fraction: frac))")
-                    .font(Typography.mono(11))
+            VStack(alignment: .leading, spacing: Spacing.md) {
+                Text("Download \(model.displayName)")
+                    .font(Typography.serif(24, .medium))
+                    .foregroundStyle(Palette.ink)
+                Text("\(provider.displayName) runs entirely on your Mac. The model is a one-time download — about \(approxSize(model)).")
+                    .font(Typography.sans(13))
                     .foregroundStyle(Palette.muted)
-                PillButton(title: "Cancel",
-                           systemImage: "xmark",
-                           style: .outline) {
-                    downloads.cancel(providerID: provider.id, modelID: model.id)
-                }
-            case .ready:
-                HStack(spacing: 6) {
-                    Image(systemName: "checkmark.circle.fill")
-                    Text("Downloaded — ready to use")
-                }
-                .font(Typography.sans(12, .semibold))
-                .foregroundStyle(Palette.greenInk)
-            case .failed(let message):
-                HStack(spacing: 6) {
-                    Image(systemName: "exclamationmark.triangle.fill")
-                    Text("Download failed: \(message)")
-                }
-                .font(Typography.sans(11))
-                .foregroundStyle(Palette.redInk)
-                PillButton(title: "Retry",
-                           systemImage: "arrow.clockwise",
-                           style: .filled) {
-                    downloads.download(providerID: provider.id, modelID: model.id)
+
+                switch state {
+                case .idle:
+                    PillButton(title: "Start download",
+                               systemImage: "arrow.down.circle",
+                               style: .filled) {
+                        downloads.download(providerID: provider.id, modelID: model.id)
+                    }
+                case .downloading(let frac):
+                    ProgressView(value: frac)
+                        .progressViewStyle(.linear)
+                        .tint(Palette.greenInk)
+                    Text("\(Int(frac * 100))% · \(byteCounter(model: model, fraction: frac))")
+                        .font(Typography.mono(11))
+                        .foregroundStyle(Palette.muted)
+                    PillButton(title: "Cancel",
+                               systemImage: "xmark",
+                               style: .outline) {
+                        downloads.cancel(providerID: provider.id, modelID: model.id)
+                    }
+                case .ready:
+                    HStack(spacing: 6) {
+                        Image(systemName: "checkmark.circle.fill")
+                        Text("Downloaded — ready to use")
+                    }
+                    .font(Typography.sans(12, .semibold))
+                    .foregroundStyle(Palette.greenInk)
+                case .failed(let message):
+                    HStack(spacing: 6) {
+                        Image(systemName: "exclamationmark.triangle.fill")
+                        Text("Download failed: \(message)")
+                    }
+                    .font(Typography.sans(11))
+                    .foregroundStyle(Palette.redInk)
+                    PillButton(title: "Retry",
+                               systemImage: "arrow.clockwise",
+                               style: .filled) {
+                        downloads.download(providerID: provider.id, modelID: model.id)
+                    }
                 }
             }
         }

@@ -54,7 +54,9 @@ private func sysctlString(name: String) -> String? {
     var size: Int = 0
     sysctlbyname(name, nil, &size, nil, 0)
     guard size > 0 else { return nil }
-    var buffer = [CChar](repeating: 0, count: size)
+    var buffer = [UInt8](repeating: 0, count: size)
     sysctlbyname(name, &buffer, &size, nil, 0)
-    return String(cString: buffer)
+    // Drop the trailing NUL so the decoded string doesn't carry a "\0".
+    if buffer.last == 0 { buffer.removeLast() }
+    return String(decoding: buffer, as: UTF8.self)
 }
