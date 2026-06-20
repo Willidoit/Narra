@@ -26,6 +26,12 @@ final class ContentViewModel: ObservableObject {
 
     var isRecording: Bool { uiMode == .recording }
 
+    /// True while a toggle-mode recording is live. Toggle recordings can be
+    /// stopped or discarded from the notch (the user isn't holding a key),
+    /// so the cancel/confirm disks appear. Push-to-talk recordings end on
+    /// key release, so they need no inline controls.
+    var isToggleRecording: Bool { uiMode == .recording && currentMode == .toggle }
+
     private var currentMode: CaptureMode = .pushToTalk
     private let orchestrator = AppServices.shared.orchestrator
     private let captureManager = AudioCaptureManager()

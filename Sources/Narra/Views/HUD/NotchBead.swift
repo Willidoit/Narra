@@ -34,13 +34,23 @@ struct NotchBead: View {
     @State private var open = false
 
     private let height: CGFloat = 28
-    private let collapsedWidth: CGFloat = 48
+
+    /// Collapsed width = the notch width itself, so the bead enters as a
+    /// seamless extension of the system notch instead of a separate pill.
+    private var collapsedWidth: CGFloat {
+        NotchGeometry.notchWidth(for: NSScreen.main ?? NSScreen.screens[0])
+    }
 
     private var targetWidth: CGFloat {
-        let notchWidth = NotchGeometry.notchWidth(for: NSScreen.main ?? NSScreen.screens[0])
+        let notchWidth = collapsedWidth
         switch viewModel.uiMode {
-        case .recording, .reviewing:
+        case .reviewing:
             return notchWidth + 88
+        case .recording:
+            // Toggle recording shows cancel/confirm disks — needs the extra
+            // width. Push-to-talk has no inline controls, so it stays at
+            // notch width and reads as a hanging extension of the notch.
+            return viewModel.isToggleRecording ? notchWidth + 88 : notchWidth
         case .processing:
             return notchWidth
         default:
@@ -70,7 +80,7 @@ struct NotchBead: View {
 
             HStack(spacing: Spacing.sm) {
                 switch viewModel.uiMode {
-                case .recording:
+                case .recording where viewModel.isToggleRecording:
                     recordingCancelDisk(action: viewModel.discardRecording)
                         .accessibilityLabel("Discard recording")
                 case .reviewing:
@@ -86,7 +96,7 @@ struct NotchBead: View {
                     .frame(maxWidth: .infinity)
 
                 switch viewModel.uiMode {
-                case .recording:
+                case .recording where viewModel.isToggleRecording:
                     recordingConfirmDisk(action: viewModel.stopAndReview)
                         .accessibilityLabel("Stop and review recording")
                 case .reviewing:
@@ -126,7 +136,16 @@ struct NotchBead: View {
 
     @ViewBuilder
     private var beadBackground: some View {
-        let shape = Capsule(style: .continuous)
+        // Flat top so the bead reads as a hanging extension of the system
+        // notch; rounded bottom so it still feels like glass. Top corners
+        // are 0 even on non-notch displays — the look stays consistent.
+        let shape = UnevenRoundedRectangle(
+            topLeadingRadius: 0,
+            bottomLeadingRadius: height / 2,
+            bottomTrailingRadius: height / 2,
+            topTrailingRadius: 0,
+            style: .continuous
+        )
         if #available(macOS 26.0, *) {
             shape.fill(.black.opacity(0.85))
                 .glassEffect(.regular, in: shape)
