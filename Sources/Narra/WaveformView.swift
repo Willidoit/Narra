@@ -23,7 +23,11 @@ struct WaveformView: View {
                 )
                 context.fill(
                     Path(roundedRect: rect, cornerRadius: actualBarWidth / 2),
-                    with: .color(.white.opacity(0.8))
+                    with: .linearGradient(
+                        Gradient(colors: Iridescence.stops),
+                        startPoint: CGPoint(x: 0, y: 0),
+                        endPoint: CGPoint(x: size.width, y: 0)
+                    )
                 )
             }
         }
