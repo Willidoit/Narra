@@ -42,7 +42,8 @@ public struct LocalCorrectionFilter: Sendable {
         guard !text.isEmpty else { return text }
 
         let tokenized = tokenize(text)
-        let withoutPrefix = stripCorrectionPrefix(from: tokenized)
+        let afterMidCorrection = stripMidSentenceCorrection(from: tokenized)
+        let withoutPrefix = stripCorrectionPrefix(from: afterMidCorrection)
         let withoutFillers = removeStandaloneFillers(from: withoutPrefix, confidence: confidence)
         return reconstruct(from: withoutFillers)
     }
@@ -137,27 +138,81 @@ public struct LocalCorrectionFilter: Sendable {
             }
     }
 
+    /// Phrases that, at the start of an utterance, mean "ignore what I was
+    /// about to say". Order matters only for ambiguous overlaps; first match
+    /// wins. Multi-word patterns try first so "no wait" beats a hypothetical
+    /// bare "no".
+    private static let correctionPrefixes: [[String]] = [
+        ["scratch", "that"],
+        ["no", "wait"],
+        ["oh", "wait"],
+        ["wait", "no"],
+        ["or", "rather"],
+        ["or", "actually"],
+        ["i", "mean"],
+        ["i", "meant"],
+        ["let", "me", "rephrase"],
+        ["let", "me", "restart"],
+        ["sorry", "i", "mean"],
+        ["sorry", "i", "meant"],
+        ["actually"],
+        ["rather"],
+    ]
+
+    /// Strong markers that mean "throw out everything I just said" wherever
+    /// they appear. Conservative on purpose: only phrases that are nearly
+    /// always corrections, not casual interjections like a bare "actually".
+    private static let midSentenceCorrectionMarkers: [[String]] = [
+        ["scratch", "that"],
+        ["no", "wait"],
+        ["oh", "wait"],
+        ["wait", "no"],
+        ["let", "me", "rephrase"],
+        ["let", "me", "restart"],
+    ]
+
     private static func stripCorrectionPrefix(from tokens: [Token]) -> [Token] {
         guard let firstIndex = firstWordIndex(in: tokens, startingAt: 0) else {
             return tokens
         }
 
-        if let endIndex = matchedPrefixEndIndex(words: ["actually"], in: tokens, startingAt: firstIndex) {
-            return trimLeadingPunctuation(Array(tokens[endIndex...]))
+        for pattern in correctionPrefixes {
+            if let endIndex = matchedPrefixEndIndex(words: pattern, in: tokens, startingAt: firstIndex) {
+                return trimLeadingPunctuation(Array(tokens[endIndex...]))
+            }
         }
 
-        if let endIndex = matchedPrefixEndIndex(words: ["rather"], in: tokens, startingAt: firstIndex) {
-            return trimLeadingPunctuation(Array(tokens[endIndex...]))
+        return tokens
+    }
+
+    /// Find the LAST occurrence of any strong correction marker and drop
+    /// everything up to and including it. "I'll head to the store, oh wait,
+    /// the mall" → "the mall".
+    private static func stripMidSentenceCorrection(from tokens: [Token]) -> [Token] {
+        var lastEnd: Int? = nil
+        var index = 0
+        while index < tokens.count {
+            guard case .word = tokens[index] else {
+                index += 1
+                continue
+            }
+            var matched = false
+            for pattern in midSentenceCorrectionMarkers {
+                if let end = matchedPrefixEndIndex(words: pattern, in: tokens, startingAt: index) {
+                    lastEnd = end
+                    index = end
+                    matched = true
+                    break
+                }
+            }
+            if !matched {
+                index += 1
+            }
         }
 
-        if let endIndex = matchedPrefixEndIndex(words: ["i", "mean"], in: tokens, startingAt: firstIndex) {
-            return trimLeadingPunctuation(Array(tokens[endIndex...]))
+        if let end = lastEnd, end < tokens.count {
+            return trimLeadingPunctuation(Array(tokens[end...]))
         }
-
-        if let endIndex = matchedPrefixEndIndex(words: ["no", "wait"], in: tokens, startingAt: firstIndex) {
-            return trimLeadingPunctuation(Array(tokens[endIndex...]))
-        }
-
         return tokens
     }
 

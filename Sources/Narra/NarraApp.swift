@@ -7,13 +7,14 @@ import IOKit.hid
 
 final class AppDelegate: NSObject, NSApplicationDelegate {
     func applicationDidFinishLaunching(_ notification: Notification) {
+        // Regular app: titled main window + Dock icon. Set activation
+        // policy before the icon so the Dock tile exists when we assign.
+        NSApp.setActivationPolicy(.regular)
         if let url = Bundle.module.url(forResource: "AppIcon", withExtension: "png"),
            let image = NSImage(contentsOf: url) {
             NSApp.applicationIconImage = image
+            NSApp.dockTile.display()
         }
-        // Activation policy is driven dynamically by WindowBehavior per uiMode:
-        // .regular while Home is visible (Dock icon shown), .accessory otherwise.
-        NSApp.setActivationPolicy(.accessory)
         KeychainService.migrateLegacyGrokKeyIfNeeded()
         let axOpts = ["AXTrustedCheckOptionPrompt": true] as CFDictionary
         _ = AXIsProcessTrustedWithOptions(axOpts)
@@ -57,12 +58,32 @@ struct NarraApp: App {
     }()
 
     var body: some Scene {
-        WindowGroup {
+        // Primary app window — titled, resizable, real Mac chrome. Holds
+        // provider/model status and wires up keybindings on appear.
+        WindowGroup("Narra") {
+            MainWindowView()
+                .preferredColorScheme(.dark)
+        }
+        // ponytail: hidden title bar lets the canvas flow under the traffic
+        // lights for the coherent dark look. SettingsRoot already insets the
+        // sidebar's top padding by 28pt to clear them.
+        .windowStyle(.hiddenTitleBar)
+        .windowResizability(.contentMinSize)
+        .defaultSize(width: 880, height: 600)
+
+        // HUD bead — separate window so the main window can stay normal
+        // while the bead docks to the notch with .statusBar level + clear
+        // background.
+        Window("Narra HUD", id: "hud") {
             ContentView()
                 .preferredColorScheme(.dark)
         }
         .windowStyle(.plain)
-        .windowResizability(.contentSize)
+        // ponytail: HUDWindowBehavior calls setFrame manually; letting
+        // SwiftUI also size the window via .contentSize was throwing an
+        // AutoLayout NSException on fn-key (constraint conflict between
+        // SwiftUI's content-size policy and our manual frame).
+        .commandsRemoved()
 
         MenuBarExtra {
             MenuBarContent()
@@ -77,10 +98,8 @@ struct NarraApp: App {
         }
         .menuBarExtraStyle(.menu)
 
-        Settings {
-            SettingsRoot()
-                .preferredColorScheme(.dark)
-        }
+        // ponytail: settings live in the main window itself — no separate
+        // Settings scene. ⌘, brings the main window forward (see MenuBarContent).
 
         // ponytail: re-running onboarding via Settings flips the
         // hasCompletedOnboarding flag but does not auto-reopen this window —
@@ -90,7 +109,6 @@ struct NarraApp: App {
             OnboardingWindow()
                 .preferredColorScheme(.dark)
         }
-        .windowStyle(.plain)
         .windowResizability(.contentSize)
         .defaultPosition(.center)
         .commandsRemoved()
@@ -101,7 +119,14 @@ struct NarraApp: App {
 
 private struct MenuBarContent: View {
     @ObservedObject private var settings = AppSettings.shared
-    @Environment(\.openSettings) private var openSettings
+    @StateObject private var mics = MicrophoneList()
+
+    private func openMainWindow() {
+        NSApp.activate(ignoringOtherApps: true)
+        if let main = NSApp.windows.first(where: { $0.title == "Narra" }) {
+            main.makeKeyAndOrderFront(nil)
+        }
+    }
 
     private var currentProvider: TranscriptionProvider {
         TranscriptionProviderRegistry.provider(settings.selectedProviderID)
@@ -112,14 +137,11 @@ private struct MenuBarContent: View {
             ?? settings.selectedModelID
     }
 
-    /// "<provider> · <model>" — the dot indicator is a separate SF Symbol so
-    /// it never falls back to a font-emoji glyph on certain systems.
     private func currentStatusText() -> String {
         "Narra — \(currentProvider.displayName) · \(currentModelDisplayName)"
     }
 
     var body: some View {
-        // Status row — disabled Label with a tinted SF Symbol dot.
         Button(action: {}) {
             Label {
                 Text(currentStatusText())
@@ -132,12 +154,6 @@ private struct MenuBarContent: View {
 
         Divider()
 
-        Button("Open Narra") {
-            NSApp.activate(ignoringOtherApps: true)
-            openSettings()
-        }
-        .keyboardShortcut("h", modifiers: [.command, .shift])
-
         Button("Paste Last Transcription") {
             MenuBarShared.viewModel?.pasteLastTranscription()
         }
@@ -145,72 +161,50 @@ private struct MenuBarContent: View {
 
         Divider()
 
-        Menu("Provider") {
-            ForEach(TranscriptionProviderRegistry.all, id: \.id) { provider in
-                providerMenuItem(provider)
+        Menu("Select Microphone") {
+            Button {
+                UserDefaults.standard.removeObject(forKey: "preferredMicUniqueID")
+                mics.refresh()
+            } label: {
+                if mics.selectedUID == nil {
+                    Label("System Default", systemImage: "checkmark")
+                } else {
+                    Text("System Default")
+                }
+            }
+            Divider()
+            ForEach(mics.devices, id: \.uniqueID) { device in
+                Button {
+                    UserDefaults.standard.set(device.uniqueID, forKey: "preferredMicUniqueID")
+                    mics.refresh()
+                } label: {
+                    if mics.selectedUID == device.uniqueID {
+                        Label(device.localizedName, systemImage: "checkmark")
+                    } else {
+                        Text(device.localizedName)
+                    }
+                }
             }
         }
 
-        Menu("Model") {
-            ForEach(currentProvider.models, id: \.id) { model in
-                modelMenuItem(model)
+        // ponytail: hook Sparkle later; menu entry exists so users see it.
+        Button("Check for Updates…") {}
+            .disabled(true)
+
+        Button("Send Feedback") {
+            if let url = URL(string: "mailto:feedback@narra.app?subject=Narra%20Feedback") {
+                NSWorkspace.shared.open(url)
             }
         }
 
         Divider()
 
-        Button("Settings…") {
-            NSApp.activate(ignoringOtherApps: true)
-            openSettings()
-        }
-        .keyboardShortcut(",", modifiers: .command)
+        Button("Settings…") { openMainWindow() }
+            .keyboardShortcut(",", modifiers: .command)
 
         Button("Quit Narra") {
             NSApplication.shared.terminate(nil)
         }
         .keyboardShortcut("q", modifiers: .command)
-    }
-
-    @ViewBuilder
-    private func providerMenuItem(_ provider: TranscriptionProvider) -> some View {
-        let isSelected = provider.id == settings.selectedProviderID
-        let isStubbed = provider.status == .stubbed
-        let title = isStubbed ? "\(provider.displayName) (soon)" : provider.displayName
-        Button {
-            guard !isStubbed else { return }
-            settings.selectedProviderID = provider.id
-            // ponytail: snap to provider's default model instead of tracking
-            // last-used per provider.
-            settings.selectedModelID = provider.defaultModelID
-            AppServices.shared.orchestrator.setProvider(
-                provider.id,
-                model: provider.defaultModelID
-            )
-        } label: {
-            if isSelected {
-                Label(title, systemImage: "checkmark")
-            } else {
-                Text(title)
-            }
-        }
-        .disabled(isStubbed)
-    }
-
-    @ViewBuilder
-    private func modelMenuItem(_ model: ProviderModel) -> some View {
-        let isSelected = model.id == settings.selectedModelID
-        Button {
-            settings.selectedModelID = model.id
-            AppServices.shared.orchestrator.setProvider(
-                settings.selectedProviderID,
-                model: model.id
-            )
-        } label: {
-            if isSelected {
-                Label(model.displayName, systemImage: "checkmark")
-            } else {
-                Text(model.displayName)
-            }
-        }
     }
 }

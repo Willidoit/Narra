@@ -59,6 +59,34 @@ final class LocalCorrectionFilterTests: XCTestCase {
         XCTAssertEqual(ratherResult.segments.map(\.text), ["book lunch for Thursday"])
     }
 
+    func testMidSentenceCorrectionMarkerDropsEarlierPhrasing() {
+        let filter = LocalCorrectionFilter()
+
+        let ohWait = filter.apply(
+            PostProcessingRequest(
+                rawText: "I'll head to the store, oh wait, the mall",
+                segment: TranscriptSegment(
+                    text: "I'll head to the store, oh wait, the mall",
+                    startTime: t0,
+                    endTime: t2
+                )
+            )
+        )
+        XCTAssertEqual(ohWait.refinedText, "the mall")
+
+        let scratchThat = filter.apply(
+            PostProcessingRequest(
+                rawText: "Email Sarah at three, scratch that, four",
+                segment: TranscriptSegment(
+                    text: "Email Sarah at three, scratch that, four",
+                    startTime: t0,
+                    endTime: t2
+                )
+            )
+        )
+        XCTAssertEqual(scratchThat.refinedText, "four")
+    }
+
     func testRestatementDedupesNearDuplicateContextToCleanerVersion() {
         let filter = LocalCorrectionFilter()
         let previous = TranscriptSegment(text: "um set a timer for ten minutes", startTime: t0, endTime: t2)

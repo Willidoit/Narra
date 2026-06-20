@@ -5,8 +5,8 @@ Native macOS voice-to-text with intelligent post-processing. Press a global hotk
 ## What it does
 
 - **Push-to-talk capture** via a global hotkey, anywhere in macOS.
-- **Streaming transcription** while you're still speaking (Groq Whisper API, or on-device WhisperKit).
-- **Post-processing** that strips fillers, fixes self-corrections, and turns spoken restatements into the sentence you actually meant — via Grok (cloud) or a local MLX fallback.
+- **Multi-provider transcription.** Cloud: Groq, OpenAI, Deepgram, ElevenLabs. Local: WhisperKit, Apple Speech, Parakeet (MLX). Pick per-engine from the Models settings, swap models from a dropdown.
+- **Post-processing** that strips fillers ("um", "uh", "you know") and resolves self-corrections — "I'll head to the store, oh wait, the mall" → "the mall". Mid-sentence correction markers (`scratch that`, `no wait`, `oh wait`, `wait no`, `let me rephrase`) drop everything before them. Runs on Grok (cloud) or a local MLX fallback.
 - **Auto-paste** the cleaned text into whatever app had focus.
 - **Glass HUD** that opens horizontally from a 80pt bead to a 320pt pill showing record / process / review state.
 
@@ -14,7 +14,11 @@ Native macOS voice-to-text with intelligent post-processing. Press a global hotk
 
 ```
 Mic ─▶ AudioCaptureManager ─▶ TranscriptionService ─▶ PostProcessingService ─▶ Paste
-                                  (Groq | WhisperKit)    (Grok | local MLX)
+                                  ▲                       ▲
+                                  │                       └─ Grok | local MLX
+                                  │
+                                  └─ Groq | OpenAI | Deepgram | ElevenLabs
+                                  └─ WhisperKit | Apple Speech | Parakeet
 ```
 
 Source layout (`Sources/Narra/`):

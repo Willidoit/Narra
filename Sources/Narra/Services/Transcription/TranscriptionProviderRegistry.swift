@@ -10,7 +10,6 @@ public enum ProviderID: String, CaseIterable, Codable, Sendable {
     case groq
     case whisperKit
     case openAI
-    case whisperCpp
     case parakeet
     case deepgram
     case elevenLabs
@@ -43,11 +42,17 @@ public struct ProviderModel: Identifiable, Hashable, Sendable {
     public let id: String
     public let displayName: String
     public let notes: String?
+    /// Approximate download size in bytes. `nil` for cloud providers and
+    /// providers that don't download a file (Apple Speech). Used by the
+    /// Settings download row + onboarding download step to show "1.5 GB"
+    /// before the user commits.
+    public let approxBytes: Int64?
 
-    public init(id: String, displayName: String, notes: String? = nil) {
+    public init(id: String, displayName: String, notes: String? = nil, approxBytes: Int64? = nil) {
         self.id = id
         self.displayName = displayName
         self.notes = notes
+        self.approxBytes = approxBytes
     }
 }
 
@@ -120,10 +125,10 @@ public enum TranscriptionProviderRegistry {
             status: .wired,
             requiresAPIKey: false,
             models: [
-                ProviderModel(id: "base", displayName: "Base"),
-                ProviderModel(id: "small", displayName: "Small"),
-                ProviderModel(id: "medium", displayName: "Medium"),
-                ProviderModel(id: "large-v3", displayName: "Large v3"),
+                ProviderModel(id: "base", displayName: "Base", approxBytes: 145_000_000),
+                ProviderModel(id: "small", displayName: "Small", approxBytes: 488_000_000),
+                ProviderModel(id: "medium", displayName: "Medium", approxBytes: 1_530_000_000),
+                ProviderModel(id: "large-v3", displayName: "Large v3", approxBytes: 3_090_000_000),
             ],
             defaultModelID: "base"
         ),
@@ -180,31 +185,22 @@ public enum TranscriptionProviderRegistry {
             defaultModelID: "en-US"
         ),
         TranscriptionProvider(
-            id: .whisperCpp,
-            displayName: "whisper.cpp",
-            kind: .local,
-            // Stub until ggerganov/whisper.cpp is vendored as a CWhisper
-            // SwiftPM C-target. Stays in the registry so the UI keeps the
-            // "Coming soon" badge users can plan around.
-            status: .stubbed,
-            requiresAPIKey: false,
-            models: [
-                ProviderModel(id: "base.en", displayName: "Base (EN)"),
-                ProviderModel(id: "small.en", displayName: "Small (EN)"),
-                ProviderModel(id: "medium.en", displayName: "Medium (EN)"),
-            ],
-            defaultModelID: "base.en"
-        ),
-        TranscriptionProvider(
             id: .parakeet,
             displayName: "Parakeet",
             kind: .local,
-            status: .stubbed,
+            // Downloads are wired (MLX safetensors from HuggingFace); runtime
+            // inference is stubbed until the parakeet-mlx Swift package is
+            // vendored.
+            status: .wired,
             requiresAPIKey: false,
             models: [
-                ProviderModel(id: "parakeet-tdt-0.6b", displayName: "Parakeet TDT 0.6B"),
+                ProviderModel(
+                    id: "parakeet-tdt-0.6b-v2",
+                    displayName: "Parakeet TDT 0.6B v2",
+                    approxBytes: 1_220_000_000
+                ),
             ],
-            defaultModelID: "parakeet-tdt-0.6b"
+            defaultModelID: "parakeet-tdt-0.6b-v2"
         ),
     ]
 

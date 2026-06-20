@@ -6,8 +6,12 @@ import CoreGraphics
 @MainActor
 final class ContentViewModel: ObservableObject {
 
+    // Single instance shared across the main window, HUD window, and menu bar
+    // bridge so all three observe the same state.
+    static let shared = ContentViewModel()
+
     enum UIMode: Equatable {
-        case hidden, home, recording, processing, reviewing
+        case hidden, recording, processing, reviewing
     }
 
     private enum CaptureMode { case pushToTalk, toggle }
@@ -75,7 +79,7 @@ final class ContentViewModel: ObservableObject {
             }
         case .processing:
             cancelRecording()
-        case .hidden, .home:
+        case .hidden:
             currentMode = .toggle
             startRecording()
         case .reviewing:
@@ -84,18 +88,6 @@ final class ContentViewModel: ObservableObject {
     }
 
     // MARK: - UI actions
-
-    func showHome() {
-        if uiMode == .recording || uiMode == .processing { return }
-        uiMode = .home
-        NSApp.setActivationPolicy(.regular)
-        NSApp.activate(ignoringOtherApps: true)
-    }
-
-    func hideHome() {
-        if uiMode == .home { uiMode = .hidden }
-        NSApp.setActivationPolicy(.accessory)
-    }
 
     func acceptReview() {
         guard uiMode == .reviewing else { return }

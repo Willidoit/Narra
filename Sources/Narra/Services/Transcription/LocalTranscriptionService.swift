@@ -18,6 +18,12 @@ public final class LocalTranscriptionService: TranscriptionService, @unchecked S
         /// the Hugging Face `argmaxinc/whisperkit-coreml` repo.
         public var modelName: String
 
+        /// Where WhisperKit looks for previously-downloaded model bundles.
+        /// We point this at our app-support folder so progress observed by
+        /// `ModelDownloadCoordinator` lands in the same place this service
+        /// later loads from.
+        public var downloadBase: URL?
+
         /// Legacy model-manager plumbing kept for API compatibility with
         /// `LocalModelManager`. WhisperKit bypasses the manager's download
         /// logic and handles its own caching.
@@ -26,10 +32,12 @@ public final class LocalTranscriptionService: TranscriptionService, @unchecked S
 
         public init(
             modelName: String = "openai_whisper-base",
+            downloadBase: URL? = nil,
             modelManager: LocalModelManager = LocalModelManager(),
             spec: LocalModelManager.ModelSpec = LocalModelManager.defaultWhisper
         ) {
             self.modelName = modelName
+            self.downloadBase = downloadBase
             self.modelManager = modelManager
             self.spec = spec
         }
@@ -128,7 +136,10 @@ public final class LocalTranscriptionService: TranscriptionService, @unchecked S
             state?.lastError = nil
         }
         do {
-            let wk = try await WhisperKit(model: configuration.modelName)
+            let wk = try await WhisperKit(
+                model: configuration.modelName,
+                downloadBase: configuration.downloadBase
+            )
             whisperKit = wk
             await MainActor.run {
                 state?.isReady = true

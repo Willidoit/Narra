@@ -1,16 +1,30 @@
+# macOS
 .DS_Store
+
+# Swift / Xcode build artifacts
 /.build
 /Packages
-xcuserdata/
+/build
 DerivedData/
+xcuserdata/
+*.xcworkspace/xcuserdata/
 .swiftpm/configuration/registries.json
 .swiftpm/xcode/package.xcworkspace/contents.xcworkspacedata
-.netrc
+
+# Worktrees
 .worktrees/
 worktrees/
-*.xcworkspace/xcuserdata/
+
+# App / icon artifacts
+*.dmg
+*.icns
+*.iconset/
+
+# Secrets / local config
+.netrc
 .env
 *.local
 .grok-api-key
-*.dmg
+
+# Stale handoff docs
 HANDOFF.md

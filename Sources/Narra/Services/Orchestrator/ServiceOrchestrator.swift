@@ -41,7 +41,6 @@ public final class ServiceOrchestrator: @unchecked Sendable {
     public let configuration: Configuration
     public let cloudTranscriber: GrokTranscriptionService
     public let localTranscriber: LocalTranscriptionService
-    public let whisperCpp: WhisperCppTranscriptionService
     public let cloudProcessor: GrokPostProcessingService
     public let localProcessor: LocalPostProcessingService
     public let modelManager: LocalModelManager
@@ -60,15 +59,18 @@ public final class ServiceOrchestrator: @unchecked Sendable {
 
     public init(
         configuration: Configuration = Configuration(),
-        modelManager: LocalModelManager = LocalModelManager()
+        modelManager: LocalModelManager = LocalModelManager(),
+        whisperDownloadBase: URL? = nil
     ) {
         self.configuration = configuration
         self.modelManager = modelManager
         self.cloudTranscriber = GrokTranscriptionService(apiKey: configuration.apiKey)
         self.localTranscriber = LocalTranscriptionService(
-            configuration: LocalTranscriptionService.Configuration(modelManager: modelManager)
+            configuration: LocalTranscriptionService.Configuration(
+                downloadBase: whisperDownloadBase,
+                modelManager: modelManager
+            )
         )
-        self.whisperCpp = WhisperCppTranscriptionService()
         self.cloudProcessor = GrokPostProcessingService()
         self.localProcessor = LocalPostProcessingService(
             configuration: LocalPostProcessingService.Configuration(modelManager: modelManager)
@@ -146,12 +148,19 @@ public final class ServiceOrchestrator: @unchecked Sendable {
             return AppleSpeechTranscriptionService(
                 configuration: .init(localeIdentifier: model)
             )
-        case .whisperCpp:
-            return whisperCpp
         case .parakeet:
-            // Still stubbed in the registry — fall through to WhisperKit so the
-            // pipeline keeps working if a user selects it before it's wired.
-            return localTranscriber
+            // FluidAudio downloads land under
+            // ~/Library/Application Support/Narra/Models/parakeet/parakeet-tdt-0.6b-v3-coreml/.
+            // If the bundle isn't present, fall back to WhisperKit so the
+            // pipeline keeps working (the user will see the download prompt
+            // in Settings → Models or in onboarding).
+            let base = ModelDownloadCoordinator.parakeetBaseDirectory()
+            guard let dir = ModelDownloadCoordinator.resolveParakeetDirectory(in: base) else {
+                return localTranscriber
+            }
+            return ParakeetTranscriptionService(
+                configuration: .init(modelDirectory: dir)
+            )
         }
     }
 

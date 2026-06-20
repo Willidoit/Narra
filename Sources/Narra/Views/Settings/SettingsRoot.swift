@@ -11,11 +11,13 @@ struct SettingsRoot: View {
 
     // MARK: - Section
 
+    // ponytail: order = user setup flow (pick model → set triggers → mic →
+    // cleanup → misc). Don't shuffle without a usability reason.
     enum Section: String, CaseIterable, Identifiable, Hashable {
         case models
-        case postProcessing
         case hotkeys
         case audio
+        case postProcessing
         case general
 
         var id: String { rawValue }
@@ -62,6 +64,12 @@ struct SettingsRoot: View {
 
     private var sidebar: some View {
         VStack(alignment: .leading, spacing: Spacing.xs) {
+            Text("SETTINGS")
+                .font(Typography.sans(10, .semibold))
+                .tracking(1.4)
+                .foregroundStyle(Palette.muted)
+                .padding(.horizontal, Spacing.sm)
+                .padding(.bottom, Spacing.xs)
             ForEach(Section.allCases) { section in
                 sidebarRow(section)
             }
@@ -131,6 +139,7 @@ struct SettingsRoot: View {
                 }
             }
             .padding(Spacing.xxl)
+            .padding(.bottom, Spacing.xxl)
         }
         .background(Palette.canvas)
     }

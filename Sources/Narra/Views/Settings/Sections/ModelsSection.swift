@@ -330,24 +330,95 @@ private struct CloudProviderBody: View {
 private struct LocalProviderBody: View {
     let provider: TranscriptionProvider
     @ObservedObject private var settings = AppSettings.shared
+    @ObservedObject private var coordinator = ModelDownloadCoordinator.shared
 
+    private var isAppleSpeech: Bool { provider.id == .appleSpeech }
     private var recommendedID: String? {
-        HardwareProfile.current.recommendedModelID(for: provider.id)
+        guard !isAppleSpeech else { return nil }
+        return HardwareProfile.current.recommendedModelID(for: provider.id)
     }
 
     var body: some View {
         VStack(alignment: .leading, spacing: Spacing.md) {
-            if provider.models.count > 1 {
-                EditorialSectionLabel(text: "Model")
-                Picker("", selection: modelBinding) {
-                    ForEach(provider.models) { model in
-                        Text(model.displayName).tag(model.id)
-                    }
-                }
-                .labelsHidden()
-                .pickerStyle(.menu)
-                .tint(Palette.ink)
+            if isAppleSpeech {
+                appleSpeechBody
+            } else {
+                downloadableModelsBody
             }
+        }
+    }
+
+    // MARK: - Apple Speech (language picker)
+
+    private var appleSpeechBody: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            EditorialSectionLabel(text: "Language")
+            VStack(spacing: Spacing.xs) {
+                ForEach(provider.models) { model in
+                    languageRow(model)
+                }
+            }
+        }
+    }
+
+    private func languageRow(_ model: ProviderModel) -> some View {
+        let isSelected = model.id == settings.selectedModelID
+            && settings.selectedProviderID == provider.id
+        return Button {
+            settings.selectedModelID = model.id
+            AppServices.shared.orchestrator.setProvider(provider.id, model: model.id)
+        } label: {
+            HStack(spacing: Spacing.sm) {
+                Image(systemName: "globe")
+                    .font(.system(size: 12, weight: .regular))
+                    .foregroundStyle(Palette.muted)
+                    .frame(width: 16)
+                Text(model.displayName)
+                    .font(Typography.sans(13, .medium))
+                    .foregroundStyle(Palette.ink)
+                Spacer(minLength: 0)
+                Image(systemName: isSelected ? "largecircle.fill.circle" : "circle")
+                    .font(.system(size: 14, weight: .regular))
+                    .foregroundStyle(isSelected ? Palette.greenInk : Palette.muted)
+            }
+            .padding(.horizontal, Spacing.sm)
+            .padding(.vertical, Spacing.sm)
+            .background(
+                RoundedRectangle(cornerRadius: CornerRadius.md, style: .continuous)
+                    .fill(Color.white.opacity(0.04))
+            )
+            .overlay(
+                RoundedRectangle(cornerRadius: CornerRadius.md, style: .continuous)
+                    .stroke(Color.white.opacity(0.08), lineWidth: 0.5)
+            )
+            .contentShape(Rectangle())
+        }
+        .buttonStyle(.plain)
+    }
+
+    // MARK: - Downloadable local providers (WhisperKit / Parakeet)
+
+    private var downloadableModelsBody: some View {
+        VStack(alignment: .leading, spacing: Spacing.sm) {
+            EditorialSectionLabel(text: "Model")
+
+            Picker("", selection: modelBinding) {
+                ForEach(provider.models) { model in
+                    Text(model.displayName).tag(model.id)
+                }
+            }
+            .labelsHidden()
+            .pickerStyle(.menu)
+            .tint(Palette.ink)
+
+            if let selected = selectedModel {
+                ModelDownloadRow(
+                    providerID: provider.id,
+                    model: selected,
+                    coordinator: coordinator
+                )
+            }
+
             if let rec = recommendedID,
                let recModel = provider.models.first(where: { $0.id == rec }) {
                 HStack(spacing: 6) {
@@ -364,18 +435,21 @@ private struct LocalProviderBody: View {
         }
     }
 
+    private var selectedModel: ProviderModel? {
+        provider.models.first(where: { $0.id == settings.selectedModelID })
+            ?? provider.models.first
+    }
+
+    /// Drives the model dropdown. Picking a model also activates this
+    /// provider — selection is decoupled from download state, so users can
+    /// pick a model before downloading it; the row below shows the CTA.
     private var modelBinding: Binding<String> {
         Binding(
-            get: {
-                provider.models.contains(where: { $0.id == settings.selectedModelID })
-                    ? settings.selectedModelID
-                    : provider.defaultModelID
-            },
+            get: { selectedModel?.id ?? provider.defaultModelID },
             set: { newID in
-                if settings.selectedProviderID == provider.id {
-                    settings.selectedModelID = newID
-                    AppServices.shared.orchestrator.setProvider(provider.id, model: newID)
-                }
+                settings.selectedProviderID = provider.id
+                settings.selectedModelID = newID
+                AppServices.shared.orchestrator.setProvider(provider.id, model: newID)
             }
         )
     }

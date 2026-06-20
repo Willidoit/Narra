@@ -7,16 +7,22 @@ final class AppServices {
 
     let orchestrator: ServiceOrchestrator
     let engineState: TranscriptionEngineState
+    let downloadCoordinator: ModelDownloadCoordinator
 
     private init() {
         let engineState = TranscriptionEngineState()
+        let downloadCoordinator = ModelDownloadCoordinator.shared
         // ponytail: mode read once at launch; ServiceOrchestrator.configuration is `let`,
         // so changing Service Mode in Settings takes effect on next launch.
         let mode = AppSettings.shared.orchestratorMode
-        let orchestrator = ServiceOrchestrator(configuration: .init(mode: mode))
+        let orchestrator = ServiceOrchestrator(
+            configuration: .init(mode: mode),
+            whisperDownloadBase: downloadCoordinator.whisperKitDownloadBase
+        )
         orchestrator.localTranscriber.engineState = engineState
         self.engineState = engineState
         self.orchestrator = orchestrator
+        self.downloadCoordinator = downloadCoordinator
 
         // Warm the Groq TLS connection so the first cleanup call doesn't
         // pay handshake + DNS cost. ponytail: fire-and-forget; ignore

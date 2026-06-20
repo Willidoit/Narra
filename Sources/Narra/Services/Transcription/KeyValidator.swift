@@ -44,7 +44,7 @@ public enum KeyValidator {
             var req = URLRequest(url: URL(string: "https://api.elevenlabs.io/v1/user")!)
             req.setValue(key, forHTTPHeaderField: "xi-api-key")
             return req
-        case .whisperKit, .whisperCpp, .parakeet, .appleSpeech:
+        case .whisperKit, .parakeet, .appleSpeech:
             return nil
         }
     }

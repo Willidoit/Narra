@@ -34,12 +34,6 @@ public struct HardwareProfile: Sendable {
             case 16..<32: return "medium"
             default:      return "large-v3"
             }
-        case .whisperCpp:
-            switch physicalMemoryGB {
-            case ..<8:    return "base.en"
-            case 8..<16:  return "small.en"
-            default:      return "medium.en"
-            }
         case .appleSpeech:
             return "en-US"
         case .parakeet:

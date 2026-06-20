@@ -162,11 +162,15 @@ public final class LocalModelManager: @unchecked Sendable {
         _ spec: ModelSpec,
         progress: @escaping @Sendable (Double) -> Void = { _ in }
     ) async throws -> URL {
-        let dest = baseDirectory.appendingPathComponent(spec.key + ".bin")
+        let dest = destinationURL(for: spec)
         if fileManager.fileExists(atPath: dest.path) {
             progress(1.0)
             return dest
         }
+        try? fileManager.createDirectory(
+            at: dest.deletingLastPathComponent(),
+            withIntermediateDirectories: true
+        )
         let delegate = DownloadProgressDelegate(progress: progress)
         let (tempURL, response) = try await session.download(from: spec.url, delegate: delegate)
         if let http = response as? HTTPURLResponse, !(200..<300).contains(http.statusCode) {
@@ -178,6 +182,21 @@ public final class LocalModelManager: @unchecked Sendable {
         try fileManager.moveItem(at: tempURL, to: dest)
         progress(1.0)
         return dest
+    }
+
+    /// Where `download(_:)` writes the file. Public so callers (e.g. the
+    /// download coordinator) can check existence and surface the same path
+    /// at consumption time.
+    public func destinationURL(for spec: ModelSpec) -> URL {
+        baseDirectory.appendingPathComponent(spec.key + ".bin")
+    }
+
+    /// Delete a previously-downloaded model file. No-op if not present.
+    public func delete(_ spec: ModelSpec) throws {
+        let dest = destinationURL(for: spec)
+        if fileManager.fileExists(atPath: dest.path) {
+            try fileManager.removeItem(at: dest)
+        }
     }
 }
 

@@ -14,7 +14,7 @@ import os.lock
 /// 1. Request microphone permission when started.
 /// 2. Install a tap on the input node that converts whatever the hardware
 ///    provides to a fixed 16 kHz mono `Int16` format expected by every STT
-///    engine in the project (Grok, whisper.cpp, MLX).
+///    engine in the project (Grok, WhisperKit, MLX).
 /// 3. Feed the converted samples into a `RollingAudioBuffer` and surface
 ///    the latest RMS level for the UI.
 /// 4. Expose a flush-on-stop helper that returns the captured audio as a
