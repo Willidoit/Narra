@@ -41,24 +41,35 @@ final class KeyRecorderNSView: NSView {
         NSColor.white.withAlphaComponent(0.05).setFill()
         bgPath.fill()
 
-        let label = isRecordingKeys
-            ? "Press a key, or hold then release a modifier…"
-            : (currentBinding.keyChar == nil && currentBinding.modifierFlags == 0
-               ? "Click to record"
-               : currentBinding.displayString)
+        // ponytail: every value must be concretely non-nil before bridging
+        // to NSDictionary. Previously `NSFont?` + `??` made it look safe,
+        // but CoreText crashed in release with "nil object from objects[0]"
+        // during str.size(). Build attrs incrementally with guaranteed
+        // fallbacks so a font/color resolver hiccup can't take down draw.
+        let label: String
+        if isRecordingKeys {
+            label = "Press a key, or hold then release a modifier…"
+        } else if currentBinding.keyChar == nil && currentBinding.modifierFlags == 0 {
+            label = "Click to record"
+        } else {
+            label = currentBinding.displayString
+        }
 
         let useMono = !isRecordingKeys && (currentBinding.keyChar != nil || currentBinding.modifierFlags != 0)
-        let primary: NSFont? = useMono
+        let preferred: NSFont? = useMono
             ? NSFont.monospacedSystemFont(ofSize: 12, weight: .regular)
             : NSFont.systemFont(ofSize: 11)
-        let font = primary ?? NSFont.systemFont(ofSize: NSFont.systemFontSize)
+        let font: NSFont = preferred
+            ?? NSFont(name: "Menlo", size: 12)
+            ?? NSFont.boldSystemFont(ofSize: 12)
         let color: NSColor = isRecordingKeys
             ? NSColor.white.withAlphaComponent(0.55)
             : NSColor(red: 0.949, green: 0.945, blue: 0.925, alpha: 1.0) // matches Palette.darkInk
-        let attrs: [NSAttributedString.Key: Any] = [
-            .font: font,
-            .foregroundColor: color
-        ]
+
+        var attrs: [NSAttributedString.Key: Any] = [:]
+        attrs[.font] = font
+        attrs[.foregroundColor] = color
+
         let str = NSAttributedString(string: label, attributes: attrs)
         let size = str.size()
         let rect = NSRect(
